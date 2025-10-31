@@ -4,7 +4,6 @@ use actix_web::http::header::{HeaderName, AUTHORIZATION};
 use actix_web::middleware::Next;
 use actix_web::HttpMessage; // para extensions_mut()
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
-use serde_json::json;
 use crate::response::ApiResponse;
 
 use crate::types::{AuthContext, JwtClaims};
@@ -22,7 +21,7 @@ fn internal_error(msg: &str) -> HttpResponse {
 }
 
 pub async fn auth_guard( // middleware: valida y decodifica JWT HS256 y añade AuthContext en Extensions
-    mut req: ServiceRequest,
+    req: ServiceRequest,
     next: Next<BoxBody>,
 ) -> Result<ServiceResponse<BoxBody>, Error> {
     // Authorization: lee el header y quita el prefijo "Bearer " si existe

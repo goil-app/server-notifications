@@ -3,23 +3,21 @@ use actix_web::dev::HttpServiceFactory;
 use actix_web::middleware::from_fn;
 use crate::middleware::platform::mobile_platform_guard;
 use crate::middleware::auth::auth_guard;
-use serde::Serialize;
 use crate::response::ApiResponse;
 use crate::application::GetNotificationUseCase;
-use crate::infrastructure::notification::random::RandomNotificationRepository;
+use crate::infrastructure::notification::mongo::MongoNotificationRepository;
+use crate::mappers::notification::domain_to_response;
+use mongodb::Database;
 
-#[derive(Serialize)]
-struct ApiOkResponse<T> { timestamp: i64, data: T }
-
-#[derive(Serialize)]
-struct Data { message: String }
-
-async fn get_notification(_req: HttpRequest, path: web::Path<String>) -> impl Responder {
+async fn get_notification(_req: HttpRequest, db: web::Data<Database>, path: web::Path<String>) -> impl Responder {
     let id: String = path.into_inner();
-    let repo = RandomNotificationRepository::new();
+    let repo = MongoNotificationRepository::new(db.get_ref().clone());
     let usecase = GetNotificationUseCase::new(repo);
     match usecase.execute(&id).await {
-        Ok(n) => HttpResponse::Ok().json(ApiResponse::ok(Data { message: n.message })),
+        Ok(n) => {
+            let resp = domain_to_response(n);
+            HttpResponse::Ok().json(ApiResponse::ok(resp))
+        },
         Err(_) => HttpResponse::NotFound().finish(),
     }
 }

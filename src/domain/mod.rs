@@ -1,3 +1,3 @@
 pub mod notification;
-pub use notification::{Notification, NotificationRepository, RepoError};
+pub use notification::{Notification, Linked, NotificationRepository, RepoError};
 

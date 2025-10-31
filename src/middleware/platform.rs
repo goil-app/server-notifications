@@ -2,7 +2,6 @@ use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error, HttpResponse};
 use actix_web::body::BoxBody; // BoxBody: tipo único para el cuerpo de la respuesta que evita genéricos opacos en middlewares
 use actix_web::middleware::Next;
 use actix_web::http::header::HeaderName;
-use serde_json::json;
 use crate::response::ApiResponse;
 
 static CLIENT_PLATFORM_HEADER: &str = "x-client-platform";

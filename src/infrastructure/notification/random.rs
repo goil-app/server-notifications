@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use rand::Rng;
+use chrono::Utc;
 
-use crate::domain::{Notification, NotificationRepository, RepoError};
+use crate::domain::{Notification, Linked, NotificationRepository, RepoError};
 
 #[derive(Clone, Default)]
 pub struct RandomNotificationRepository;
@@ -18,7 +19,17 @@ impl NotificationRepository for RandomNotificationRepository {
         Ok(Notification {
             id: format!("{}", num),
             title: "Random Notification".to_string(),
-            message: format!("random-{}", num),
+            body: format!("random-{}", num),
+            image_paths: vec![],
+            url: String::new(),
+            user_targets: vec![],
+            topic: None,
+            notification_type: 1,
+            creation_date: Utc::now(),
+            payload_type: 1,
+            business_id: None,
+            linked: Linked { linked_type: 0, object_id: None, object: None },
+            browser: 2,
         })
     }
 }
