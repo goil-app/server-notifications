@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse, Responder, Scope};
 use serde::Serialize;
+use actix_web::get;
 use crate::response::ApiResponse;
 
 #[derive(Serialize)]

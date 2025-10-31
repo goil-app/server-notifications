@@ -24,8 +24,8 @@ async fn get_notification(_req: HttpRequest, db: web::Data<Database>, path: web:
 
 pub fn router() -> impl HttpServiceFactory {
     web::scope("/api/v2/notification")
-        .wrap(from_fn(mobile_platform_guard))
-        .wrap(from_fn(auth_guard))
+        // .wrap(from_fn(mobile_platform_guard))
+        // .wrap(from_fn(auth_guard))
         .route("/{id}", web::get().to(get_notification))
 }
 
