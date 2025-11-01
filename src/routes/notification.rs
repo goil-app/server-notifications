@@ -8,6 +8,7 @@ use crate::middleware::session::session_guard;
 use crate::response::ApiResponse;
 use crate::infrastructure::services::AppServices;
 use crate::mappers::notification::domain_to_response;
+use crate::types::AuthContext;
 
 async fn get_notification(req: HttpRequest, services: web::Data<AppServices>, path: web::Path<String>) -> impl Responder {
     let id: String = path.into_inner();
@@ -19,7 +20,18 @@ async fn get_notification(req: HttpRequest, services: web::Data<AppServices>, pa
         .cloned()
         .unwrap_or_else(|| "es".to_string());
     
-    match services.get_notification.execute(&id, &language).await {
+    // Obtener business_id del AuthContext (inyectado por auth_guard)
+    let business_id = req.extensions()
+        .get::<AuthContext>()
+        .map(|ctx| ctx.business_id.clone())
+        .filter(|bid| !bid.is_empty());
+    
+    let Some(business_id) = business_id else {
+        return HttpResponse::Forbidden()
+            .json(ApiResponse::<()>::error("Missing or invalid business_id"));
+    };
+    
+    match services.get_notification.execute(&id, &language, &business_id).await {
         Ok(n) => {
             let resp = domain_to_response(n);
             HttpResponse::Ok().json(ApiResponse::ok(resp))

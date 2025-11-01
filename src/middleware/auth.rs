@@ -36,12 +36,13 @@ pub async fn auth_guard( // middleware: valida y decodifica JWT HS256 y añade A
 
     // Config JWT: HS256 fijo; secreto desde entorno (o valor por defecto en dev)
     // Intenta JWT_SECRET primero, luego JWT_MOBILE_PLATFORM (para compatibilidad)
-    let secret = std::env::var("JWT_SECRET")
-        .or_else(|_| std::env::var("JWT_MOBILE_PLATFORM"))
-        .unwrap_or_else(|_| {
-            eprintln!("[auth_guard] WARNING: No JWT_SECRET or JWT_MOBILE_PLATFORM found, using default!");
-            "dev-secret".into()
-        });
+    let secret = match std::env::var("JWT_MOBILE_PLATFORM") {
+        Ok(val) => val,
+        Err(_) => {
+            let resp = internal_error("JWT_MOBILE_PLATFORM environment variable not set");
+            return Ok(req.into_response(resp.map_into_boxed_body()));
+        }
+    };
 
     // Decodificar y validar firma/exp con HS256
     let claims = match decode::<JwtClaims>(
