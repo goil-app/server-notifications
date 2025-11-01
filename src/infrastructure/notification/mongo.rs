@@ -4,7 +4,6 @@ use mongodb::bson::{doc, oid::ObjectId, Document};
 use mongodb::options::FindOptions;
 use futures::stream::TryStreamExt;
 
-
 use crate::domain::{Notification, NotificationRepository, NotificationRepoError, SimplifiedUser};
 use crate::mappers::{notification::doc_to_domain, common::object_id_to_string_or_empty};
 
@@ -49,8 +48,8 @@ impl NotificationRepository for MongoNotificationRepository {
             simplified_user.creation_date.timestamp_millis()
         );
 
-        let account_type_id = simplified_user.account_type.clone();
-        let phone = simplified_user.phone.clone();
+        let account_type_id = &simplified_user.account_type;
+        let phone = &simplified_user.phone;
         let topic_all_business_id = format!("all_{}", simplified_user.business_id);
 
         let external_hidden_type = 17;
@@ -61,12 +60,12 @@ impl NotificationRepository for MongoNotificationRepository {
             "deleted": false,
             "type": { "$ne": external_hidden_type },
             "$or": [
-                { "topic": { "$regex": &account_type_id } },
+                { "topic": { "$regex": account_type_id } },
                 { "topic": { "$eq": &topic_all_business_id } },
-                { "userTargets": { "$in": [user_oid.clone()] } },
-                { "accountTypeTargets": { "$in": [account_type_id.clone()] } },
-                { "userTargetsChannel": { "$in": [user_oid.clone()] } },
-                { "phones": { "$in": [phone.clone()] } }
+                { "userTargets": { "$in": [&user_oid] } },
+                { "accountTypeTargets": { "$in": [account_type_id] } },
+                { "userTargetsChannel": { "$in": [&user_oid] } },
+                { "phones": { "$in": [phone] } }
             ]
         };
 
@@ -83,6 +82,7 @@ impl NotificationRepository for MongoNotificationRepository {
         let mut notification_ids = Vec::new();
         while let Some(result) = cursor.try_next().await.map_err(|e| NotificationRepoError::Unexpected(e.to_string()))? {
             let id = object_id_to_string_or_empty(result.get_object_id("_id").ok());
+            println!("{:?}", id);
             if !id.is_empty() {
                 notification_ids.push(id);
             }
@@ -91,5 +91,3 @@ impl NotificationRepository for MongoNotificationRepository {
         Ok(notification_ids)
     }
 }
-
-

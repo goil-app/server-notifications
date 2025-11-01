@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 #[derive(Clone, Debug)]
 pub struct Session {
+    #[allow(dead_code)] // Campo de dominio, puede usarse en el futuro
     pub id: String,
     pub language: String,
 }

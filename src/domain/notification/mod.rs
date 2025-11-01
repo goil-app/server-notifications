@@ -21,6 +21,7 @@ pub struct Notification {
     pub notification_type: i32,
     pub creation_date: DateTime<Utc>,
     pub payload_type: i32,
+    #[allow(dead_code)] // Campo de dominio, puede usarse en el futuro
     pub business_id: Option<String>,
     pub linked: Linked,
     pub browser: i32,
@@ -39,4 +40,3 @@ pub trait NotificationRepository: Send + Sync {
     async fn find_by_id(&self, id: &str, language: &str, business_id: &str) -> Result<Notification, NotificationRepoError>;
     async fn find_user_notifications(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationRepoError>;
 }
-

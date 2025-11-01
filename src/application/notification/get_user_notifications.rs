@@ -12,4 +12,3 @@ impl<R: NotificationRepository> GetUserNotificationsUseCase<R> {
         self.repo.find_user_notifications(simplified_user).await
     }
 }
-

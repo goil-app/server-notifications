@@ -13,6 +13,7 @@ pub struct JwtClaims {
 #[derive(Clone, Debug)]
 pub struct AuthContext {
     pub user_id: String,
+    #[allow(dead_code)] // Campo de dominio, puede usarse en el futuro
     pub account_type_id: Option<String>,
     pub session_id: Option<String>,
     pub business_id: String,

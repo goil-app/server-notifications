@@ -7,6 +7,7 @@ use std::time::Duration;
 pub struct Databases {
     pub notifications_db: Database,
     pub account_db: Database,
+    pub analytics_db: Database,
 }
 
 impl Databases {
@@ -17,6 +18,8 @@ impl Databases {
             .unwrap_or_else(|_| "NotificationDB".to_string());
         let account_db_name = std::env::var("MONGODB_ACCOUNT_DB")
             .unwrap_or_else(|_| "AccountDB".to_string());
+        let analytics_db_name = std::env::var("MONGODB_ANALYTICS_DB")
+            .unwrap_or_else(|_| "AnalyticsDB".to_string());
         
         let mut opts = ClientOptions::parse(&uri).await?;
         opts.app_name = Some("server-notifications".to_string());
@@ -37,6 +40,7 @@ impl Databases {
         Ok(Self {
             notifications_db: client.database(&notifications_db_name),
             account_db: client.database(&account_db_name),
+            analytics_db: client.database(&analytics_db_name),
         })
     }
 }

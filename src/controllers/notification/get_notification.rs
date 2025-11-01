@@ -1,9 +1,10 @@
 use actix_web::{HttpRequest, HttpResponse, Responder};
 use actix_web::HttpMessage;
+use std::collections::HashSet;
 use crate::infrastructure::services::AppServices;
 use crate::response::ApiResponse;
 use crate::types::AuthContext;
-use crate::mappers::notification::domain_to_response;
+use crate::mappers::{notification::domain_to_response, common::sha512_hash};
 
 /// Controlador para endpoints de notificaciones
 pub struct NotificationController;
@@ -60,20 +61,50 @@ impl NotificationController {
         };
         println!("user: {:?}", user);
 
-        // Obtener notificaciones del usuario si existe
-        let user_notifications = if let Some(ref user) = user {
-            match services.get_user_notifications.execute(user).await {
+        // Obtener notificaciones del usuario y notification reads en paralelo si existe el usuario
+        let (user_notifications, notification_reads) = if let Some(ref user) = user {
+            // Crear un usuario con el phone hasheado en SHA512
+            let mut user_with_hashed_phone = user.clone();
+            user_with_hashed_phone.phone = sha512_hash(&user.phone);
+            
+            // Ejecutar ambas consultas en paralelo
+            let (user_notifications_result, notification_reads_result) = tokio::join!(
+                services.get_user_notifications.execute(&user_with_hashed_phone),
+                services.get_notification_reads.execute(&user_with_hashed_phone)
+            );
+            
+            let user_notifications = match user_notifications_result {
                 Ok(un) => Some(un),
                 Err(e) => {
                     eprintln!("[NotificationController::get_notification] Error fetching user notifications {}: {:?}", auth_ctx.user_id, e);
                     None
                 }
-            }
+            };
+            
+            let notification_reads = match notification_reads_result {
+                Ok(nr) => Some(nr),
+                Err(e) => {
+                    eprintln!("[NotificationController::get_notification] Error fetching notification reads {}: {:?}", auth_ctx.user_id, e);
+                    None
+                }
+            };
+            
+            (user_notifications, notification_reads)
         } else {
-            None
+            (None, None)
         };
-        println!("user_notifications: {:?}", user_notifications);
         
+        // Calcular notificaciones no leídas: notificaciones en user_notifications pero no en notification_reads
+        let _unread_notification_ids: Vec<String> = {
+            let user_notifications = user_notifications.unwrap_or_default();
+            let reads = notification_reads.unwrap_or_default();
+            let notifications_set: HashSet<&String> = user_notifications.iter().collect();
+            let reads_set: HashSet<&String> = reads.iter().collect();
+            notifications_set
+                .difference(&reads_set)
+                .map(|id| (*id).clone())
+                .collect()
+        };
         let resp = domain_to_response(notification);
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }
