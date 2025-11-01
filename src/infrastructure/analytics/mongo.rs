@@ -52,9 +52,6 @@ impl NotificationReadRepository for MongoNotificationReadRepository {
                     notification_ids.push(id);
                 }
         }
-
-        println!("notification_ids: {:?}", notification_ids.len());
-
         Ok(notification_ids)
     }
 }

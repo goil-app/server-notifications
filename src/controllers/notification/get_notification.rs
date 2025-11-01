@@ -132,7 +132,7 @@ impl NotificationController {
                 .map(|id| (*id).clone())
                 .collect()
         };
-        println!("unread_notification_ids: {:?}", unread_notification_ids.len());
+
         let resp = domain_to_response(notification);
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }
