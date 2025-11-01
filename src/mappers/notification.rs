@@ -2,7 +2,7 @@ use mongodb::bson::Document;
 use chrono::{DateTime, Utc, SecondsFormat};
 use serde::Serialize;
 
-use crate::domain::{Notification, Linked, NotificationRepoError};
+use crate::domain::{Notification, Linked, NotificationRepoError, SimplifiedUser};
 
 // Infra -> Dominio
 // language: idioma a usar para i18n, por defecto "es"
@@ -126,6 +126,16 @@ pub struct LinkedDto {
     pub r#type: i32,
     pub objectId: Option<String>,
     pub object: Option<serde_json::Value>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize)]
+pub struct UserDto {
+    pub id: String,
+    pub phone: String,
+    pub creationDate: String,
+    pub accountType: String,
+    pub businessId: String,
 }
 
 pub fn domain_to_response(n: Notification) -> NotificationResponse {

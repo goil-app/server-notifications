@@ -1,6 +1,7 @@
-use crate::application::{GetNotificationUseCase, GetSessionUseCase};
+use crate::application::{GetNotificationUseCase, GetSessionUseCase, GetUserUseCase};
 use crate::infrastructure::notification::mongo::MongoNotificationRepository;
 use crate::infrastructure::session::mongo::MongoSessionRepository;
+use crate::infrastructure::user::mongo::MongoUserRepository;
 use crate::infrastructure::db::Databases;
 
 /// Contenedor centralizado de todos los servicios de la aplicación
@@ -9,6 +10,7 @@ use crate::infrastructure::db::Databases;
 pub struct AppServices {
     pub get_notification: GetNotificationUseCase<MongoNotificationRepository>,
     pub get_session: GetSessionUseCase<MongoSessionRepository>,
+    pub get_user: GetUserUseCase<MongoUserRepository>,
 }
 
 impl AppServices {
@@ -16,10 +18,13 @@ impl AppServices {
     pub fn new(databases: &Databases) -> Self {
         let notification_repo = MongoNotificationRepository::new(databases.notifications_db.clone());
         let session_repo = MongoSessionRepository::new(databases.account_db.clone());
-        
+        let user_repo = MongoUserRepository::new(databases.account_db.clone());
+
         Self {
             get_notification: GetNotificationUseCase::new(notification_repo),
             get_session: GetSessionUseCase::new(session_repo),
+            get_user: GetUserUseCase::new(user_repo),
+            
         }
     }
 }

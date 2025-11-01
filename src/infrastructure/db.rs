@@ -18,10 +18,6 @@ impl Databases {
         let account_db_name = std::env::var("MONGODB_ACCOUNT_DB")
             .unwrap_or_else(|_| "AccountDB".to_string());
         
-        println!("MongoDB URI: {}", uri);
-        println!("Notifications DB: {}", notifications_db_name);
-        println!("Account DB: {}", account_db_name);
-
         let mut opts = ClientOptions::parse(&uri).await?;
         opts.app_name = Some("server-notifications".to_string());
         opts.server_selection_timeout = Some(Duration::from_secs(3));
