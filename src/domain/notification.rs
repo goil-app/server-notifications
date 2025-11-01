@@ -26,7 +26,7 @@ pub struct Notification {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum RepoError {
+pub enum NotificationRepoError {
     #[error("not found")]
     NotFound,
     #[error("unexpected error: {0}")]
@@ -35,6 +35,6 @@ pub enum RepoError {
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
-    async fn find_by_id(&self, id: &str) -> Result<Notification, RepoError>;
+    async fn find_by_id(&self, id: &str, language: &str) -> Result<Notification, NotificationRepoError>;
 }
 

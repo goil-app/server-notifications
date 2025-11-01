@@ -1,6 +1,6 @@
 use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error, HttpResponse};
 use actix_web::body::BoxBody; // BoxBody: cuerpo unificado para evitar tipos opacos en middlewares
-use actix_web::http::header::{HeaderName, AUTHORIZATION};
+use actix_web::http::header::AUTHORIZATION;
 use actix_web::middleware::Next;
 use actix_web::HttpMessage; // para extensions_mut()
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
@@ -32,16 +32,16 @@ pub async fn auth_guard( // middleware: valida y decodifica JWT HS256 y añade A
         .unwrap_or("");
     let token_str = auth.strip_prefix("Bearer ").unwrap_or(auth);
 
-    // x-client-platform (paridad con el código JS; ahora no lo validamos aquí)
-    let client_platform = req
-        .headers()
-        .get(HeaderName::from_lowercase(b"x-client-platform").unwrap())
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("");
-    let _ = client_platform; // reservado por si se quiere validar algo más adelante
+    // x-client-platform: reservado para validación futura si es necesario
 
     // Config JWT: HS256 fijo; secreto desde entorno (o valor por defecto en dev)
-    let secret = "f9^NcW3%z@Y!r6$Lm1B#"; // sustituir por std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret".into()) en producción
+    // Intenta JWT_SECRET primero, luego JWT_MOBILE_PLATFORM (para compatibilidad)
+    let secret = std::env::var("JWT_SECRET")
+        .or_else(|_| std::env::var("JWT_MOBILE_PLATFORM"))
+        .unwrap_or_else(|_| {
+            eprintln!("[auth_guard] WARNING: No JWT_SECRET or JWT_MOBILE_PLATFORM found, using default!");
+            "dev-secret".into()
+        });
 
     // Decodificar y validar firma/exp con HS256
     let claims = match decode::<JwtClaims>(
@@ -72,11 +72,12 @@ pub async fn auth_guard( // middleware: valida y decodifica JWT HS256 y añade A
     let ctx = AuthContext {
         user_id: claims.user_id,
         account_type_id: claims.type_id,
-        session_id: claims.session_id,
+        session_id: claims.session_id.clone(),
         business_id: business_id,
     };
-    req.extensions_mut().insert(ctx); // disponible vía req.extensions()
-
+    
+    // Insertar AuthContext en extensions para que los middlewares/handlers siguientes lo usen
+    req.extensions_mut().insert(ctx);
     let res = next.call(req).await?.map_into_boxed_body(); // continúa la cadena
     Ok(res) // devuelve la respuesta resultante
 }
