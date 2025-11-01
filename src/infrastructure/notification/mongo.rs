@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use mongodb::Database;
 use mongodb::bson::{doc, oid::ObjectId, Document};
+use mongodb::options::FindOptions;
+use futures::stream::TryStreamExt;
 
-use crate::domain::{Notification, NotificationRepository, NotificationRepoError};
-use crate::mappers::notification::doc_to_domain;
+
+use crate::domain::{Notification, NotificationRepository, NotificationRepoError, SimplifiedUser};
+use crate::mappers::{notification::doc_to_domain, common::object_id_to_string_or_empty};
 
 #[derive(Clone)]
 pub struct MongoNotificationRepository {
@@ -33,6 +36,59 @@ impl NotificationRepository for MongoNotificationRepository {
             None => return Err(NotificationRepoError::NotFound),
         };
         doc_to_domain(doc, language)
+    }
+
+    async fn find_user_notifications(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationRepoError> {
+        let user_oid = ObjectId::parse_str(&simplified_user.id)
+            .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
+        let business_oid = ObjectId::parse_str(&simplified_user.business_id)
+            .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
+        
+        // Convertir DateTime<Utc> a mongodb::bson::DateTime
+        let account_creation_bson = mongodb::bson::DateTime::from_millis(
+            simplified_user.creation_date.timestamp_millis()
+        );
+
+        let account_type_id = simplified_user.account_type.clone();
+        let phone = simplified_user.phone.clone();
+        let topic_all_business_id = format!("all_{}", simplified_user.business_id);
+
+        let external_hidden_type = 17;
+
+        let filter = doc! {
+            "businessId": business_oid,
+            "creationDate": { "$gt": account_creation_bson },
+            "deleted": false,
+            "type": { "$ne": external_hidden_type },
+            "$or": [
+                { "topic": { "$regex": &account_type_id } },
+                { "topic": { "$eq": &topic_all_business_id } },
+                { "userTargets": { "$in": [user_oid.clone()] } },
+                { "accountTypeTargets": { "$in": [account_type_id.clone()] } },
+                { "userTargetsChannel": { "$in": [user_oid.clone()] } },
+                { "phones": { "$in": [phone.clone()] } }
+            ]
+        };
+
+        let options = FindOptions::builder()
+            .projection(doc! { "_id": 1 })
+            .build();
+
+        let coll = self.db.collection::<Document>("Notification");
+        let mut cursor = coll
+        .find(filter, options)
+        .await
+        .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
+
+        let mut notification_ids = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| NotificationRepoError::Unexpected(e.to_string()))? {
+            let id = object_id_to_string_or_empty(result.get_object_id("_id").ok());
+            if !id.is_empty() {
+                notification_ids.push(id);
+            }
+        }
+
+        Ok(notification_ids)
     }
 }
 

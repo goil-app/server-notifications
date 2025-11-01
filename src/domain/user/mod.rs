@@ -22,3 +22,4 @@ pub enum UserRepoError {
 pub trait UserRepository: Send + Sync {
     async fn find_simplified_by_id(&self, id: &str, business_id: &str) -> Result<SimplifiedUser, UserRepoError>;
 }
+

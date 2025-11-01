@@ -2,12 +2,13 @@ use mongodb::bson::Document;
 use chrono::{DateTime, Utc, SecondsFormat};
 use serde::Serialize;
 
-use crate::domain::{Notification, Linked, NotificationRepoError, SimplifiedUser};
+use crate::domain::{Notification, Linked, NotificationRepoError};
+use crate::mappers::common::object_id_to_string_or_empty;
 
 // Infra -> Dominio
 // language: idioma a usar para i18n, por defecto "es"
 pub fn doc_to_domain(doc: Document, language: &str) -> Result<Notification, NotificationRepoError> {
-    let id = doc.get_object_id("_id").map(|oid| oid.to_hex()).unwrap_or_default();
+    let id = object_id_to_string_or_empty(doc.get_object_id("_id").ok());
     
     // Priorizar i18nTitle sobre title, filtrando por lang del parámetro language
     let title = if let Ok(i18n_array) = doc.get_array("i18nTitle") {
@@ -64,7 +65,8 @@ pub fn doc_to_domain(doc: Document, language: &str) -> Result<Notification, Noti
         let object_id = linked_doc
             .get_object_id("objectId")
             .ok()
-            .map(|oid| oid.to_hex());
+            .map(|oid| object_id_to_string_or_empty(Some(oid.clone())))
+            .filter(|s| !s.is_empty());
         // Convertir object de BSON a JSON si existe
         let object = linked_doc
             .get("object")
@@ -128,17 +130,9 @@ pub struct LinkedDto {
     pub object: Option<serde_json::Value>,
 }
 
-#[allow(non_snake_case)]
-#[derive(Serialize)]
-pub struct UserDto {
-    pub id: String,
-    pub phone: String,
-    pub creationDate: String,
-    pub accountType: String,
-    pub businessId: String,
-}
 
 pub fn domain_to_response(n: Notification) -> NotificationResponse {
+
     let dto = NotificationDto {
         id: n.id,
         title: n.title,

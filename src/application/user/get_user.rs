@@ -12,3 +12,4 @@ impl<R: UserRepository> GetUserUseCase<R> {
         self.repo.find_simplified_by_id(id, business_id).await
     }
 }
+

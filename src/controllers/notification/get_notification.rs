@@ -59,6 +59,20 @@ impl NotificationController {
             }
         };
         println!("user: {:?}", user);
+
+        // Obtener notificaciones del usuario si existe
+        let user_notifications = if let Some(ref user) = user {
+            match services.get_user_notifications.execute(user).await {
+                Ok(un) => Some(un),
+                Err(e) => {
+                    eprintln!("[NotificationController::get_notification] Error fetching user notifications {}: {:?}", auth_ctx.user_id, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        println!("user_notifications: {:?}", user_notifications);
         
         let resp = domain_to_response(notification);
         HttpResponse::Ok().json(ApiResponse::ok(resp))

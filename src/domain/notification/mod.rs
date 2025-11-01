@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use crate::domain::SimplifiedUser;
 
 #[derive(Clone, Debug)]
 pub struct Linked {
@@ -36,5 +37,6 @@ pub enum NotificationRepoError {
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
     async fn find_by_id(&self, id: &str, language: &str, business_id: &str) -> Result<Notification, NotificationRepoError>;
+    async fn find_user_notifications(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationRepoError>;
 }
 

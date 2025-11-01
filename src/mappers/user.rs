@@ -2,12 +2,11 @@ use mongodb::bson::Document;
 use chrono::{DateTime, Utc};
 
 use crate::domain::{SimplifiedUser, UserRepoError};
+use crate::mappers::common::object_id_to_string_or_empty;
 
 // Infra -> Dominio
 pub fn doc_to_simplified(doc: Document) -> Result<SimplifiedUser, UserRepoError> {
-    let id = doc.get_object_id("_id")
-        .map(|oid| oid.to_hex())
-        .unwrap_or_default();
+    let id = object_id_to_string_or_empty(doc.get_object_id("_id").ok());
     
     let phone = doc.get_str("phone")
         .unwrap_or("")
@@ -20,13 +19,9 @@ pub fn doc_to_simplified(doc: Document) -> Result<SimplifiedUser, UserRepoError>
         Utc::now()
     };
     
-    let account_type = doc.get_object_id("accountType")
-        .map(|oid| oid.to_hex())
-        .unwrap_or_default();
+    let account_type = object_id_to_string_or_empty(doc.get_object_id("accountType").ok());
     
-    let business_id = doc.get_object_id("businessId")
-        .map(|oid| oid.to_hex())
-        .unwrap_or_default();
+    let business_id = object_id_to_string_or_empty(doc.get_object_id("businessId").ok());
     
     Ok(SimplifiedUser {
         id,

@@ -50,7 +50,7 @@ async fn main() -> std::io::Result<()> {
         .bind(("0.0.0.0", 8080))?
         .workers(num_workers)
         // Optimizaciones para recursos limitados (4GB RAM)
-        .client_timeout(Duration::from_millis(5000)) // Timeout de cliente: 5 segundos
+        .client_request_timeout(Duration::from_millis(5000)) // Timeout de cliente: 5 segundos
         .client_disconnect_timeout(Duration::from_millis(1000)) // Desconectar clientes inactivos rápidamente
         .keep_alive(Duration::from_secs(30)) // Keep-alive más corto para liberar conexiones
         .run()

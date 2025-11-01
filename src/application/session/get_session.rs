@@ -12,3 +12,4 @@ impl<R: SessionRepository> GetSessionUseCase<R> {
         self.repo.find_by_id(session_id, business_id).await
     }
 }
+

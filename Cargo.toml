@@ -16,6 +16,8 @@ thiserror = "1"
 rand = "0.8"
 mongodb = { version = "2.8", default-features = false, features = ["tokio-runtime", "zlib-compression"] }
 bson = "2"
+futures = "0.3"
+
 
 [profile.release]
 opt-level = 3

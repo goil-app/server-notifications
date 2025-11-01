@@ -4,7 +4,7 @@ use actix_web::middleware::from_fn;
 use crate::middleware::platform::mobile_platform_guard;
 use crate::middleware::auth::auth_guard;
 use crate::middleware::session::session_guard;
-use crate::controllers::notification::NotificationController;
+use crate::controllers::NotificationController;
 
 async fn get_notification(req: HttpRequest, services: web::Data<crate::infrastructure::services::AppServices>, path: web::Path<String>) -> impl actix_web::Responder {
     let id = path.into_inner();
