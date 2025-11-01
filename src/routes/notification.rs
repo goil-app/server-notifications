@@ -1,26 +1,40 @@
 use actix_web::{web, HttpRequest};
 use actix_web::dev::HttpServiceFactory;
 use actix_web::middleware::from_fn;
-use serde::Deserialize;
 use crate::middleware::platform::mobile_platform_guard;
 use crate::middleware::auth::auth_guard;
 use crate::middleware::session::session_guard;
 use crate::controllers::NotificationController;
 
-#[derive(Deserialize)]
-pub struct NotificationQueryParams {
-    #[serde(rename = "businessIds[]")]
-    pub business_ids: Option<Vec<String>>,
-}
-
 async fn get_notification(
     req: HttpRequest,
     services: web::Data<crate::infrastructure::services::AppServices>,
     path: web::Path<String>,
-    query: web::Query<NotificationQueryParams>,
 ) -> impl actix_web::Responder {
     let id = path.into_inner();
-    let business_ids = query.business_ids.clone().unwrap_or_default();
+    
+    // Extraer businessIds[] manualmente del query string
+    // Actix Web ya decodifica la URL, así que buscamos tanto "businessIds[]" como "businessIds%5B%5D"
+    let business_ids: Vec<String> = req.uri().query()
+        .map(|query| {
+            query
+                .split('&')
+                .filter_map(|pair| {
+                    if let Some((key, value)) = pair.split_once('=') {
+                        // Buscar tanto la versión decodificada como codificada del nombre del campo
+                        if key == "businessIds[]" || key == "businessIds%5B%5D" {
+                            Some(value.to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    
     NotificationController::get_notification(req, services, id, business_ids).await
 }
 

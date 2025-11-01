@@ -8,8 +8,8 @@ pub struct GetUsersNotificationsUseCase<R: NotificationRepository> {
 impl<R: NotificationRepository> GetUsersNotificationsUseCase<R> {
     pub fn new(repo: R) -> Self { Self { repo } }
 
-    pub async fn execute(&self, users: &[SimplifiedUser]) -> Result<Vec<String>, NotificationRepoError> {
-        self.repo.find_users_notifications(users).await
+    pub async fn execute(&self, users: &[SimplifiedUser], business_ids: &[String]) -> Result<Vec<String>, NotificationRepoError> {
+        self.repo.find_users_notifications(users, business_ids).await
     }
 }
 

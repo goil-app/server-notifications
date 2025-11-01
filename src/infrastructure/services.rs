@@ -1,4 +1,4 @@
-use crate::application::{GetNotificationUseCase, GetSessionUseCase, GetUserUseCase, GetUsersUseCase, GetUserNotificationsUseCase, GetUsersNotificationsUseCase, GetNotificationReadsUseCase};
+use crate::application::{GetNotificationUseCase, GetSessionUseCase, GetUserUseCase, GetUsersUseCase, GetUsersNotificationsUseCase, GetNotificationReadsUseCase};
 use crate::infrastructure::notification::mongo::MongoNotificationRepository;
 use crate::infrastructure::session::mongo::MongoSessionRepository;
 use crate::infrastructure::user::mongo::MongoUserRepository;
@@ -10,7 +10,6 @@ use crate::infrastructure::db::Databases;
 #[derive(Clone)]
 pub struct AppServices {
     pub get_notification: GetNotificationUseCase<MongoNotificationRepository>,
-    pub get_user_notifications: GetUserNotificationsUseCase<MongoNotificationRepository>,
     pub get_users_notifications: GetUsersNotificationsUseCase<MongoNotificationRepository>,
     pub get_session: GetSessionUseCase<MongoSessionRepository>,
     pub get_user: GetUserUseCase<MongoUserRepository>,
@@ -28,7 +27,6 @@ impl AppServices {
 
         Self {
             get_notification: GetNotificationUseCase::new(notification_repo.clone()),
-            get_user_notifications: GetUserNotificationsUseCase::new(notification_repo.clone()),
             get_users_notifications: GetUsersNotificationsUseCase::new(notification_repo),
             get_session: GetSessionUseCase::new(session_repo),
             get_user: GetUserUseCase::new(user_repo.clone()),

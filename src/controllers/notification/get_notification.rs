@@ -96,7 +96,7 @@ impl NotificationController {
 
             // Ejecutar búsqueda de notificaciones para todos los usuarios en paralelo con notification reads
             let (all_notifications_result, notification_reads_result) = tokio::join!(
-                services.get_users_notifications.execute(&users_with_hashed_phone),
+                services.get_users_notifications.execute(&users_with_hashed_phone, &business_ids_to_use),
                 services.get_notification_reads.execute(&hashed_phone, &business_ids_to_use)
             );
             
