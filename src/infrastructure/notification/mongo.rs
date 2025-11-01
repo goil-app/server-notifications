@@ -21,7 +21,8 @@ impl NotificationRepository for MongoNotificationRepository {
         let bid = ObjectId::parse_str(business_id).map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
         let filter = doc! { 
             "_id": oid, 
-            "businessId": bid 
+            "businessId": bid,
+            "deleted": false 
         };
         let coll = self.db.collection::<Document>("Notification");
         let doc = match coll
