@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use mongodb::Database;
-use mongodb::bson::{doc, Document};
+use mongodb::bson::{doc, oid::ObjectId, Document};
 
 use crate::domain::{Session, SessionRepository, SessionRepoError};
 use crate::mappers::session::doc_to_domain;
@@ -16,9 +16,13 @@ impl MongoSessionRepository {
 
 #[async_trait]
 impl SessionRepository for MongoSessionRepository {
-    async fn find_by_id(&self, id: &str) -> Result<Session, SessionRepoError> {
+    async fn find_by_id(&self, id: &str, business_id: &str) -> Result<Session, SessionRepoError> {
+        let bid = ObjectId::parse_str(business_id).map_err(|e| SessionRepoError::Unexpected(e.to_string()))?;
         let coll = self.db.collection::<Document>("AccountSessionInfo");
-        let filter = doc! { "sessionId": id };
+        let filter = doc! { 
+            "sessionId": id,
+            "businessId": bid 
+        };
         let projection = doc! { "_id": 1, "language": 1 };
         let find_options = mongodb::options::FindOneOptions::builder()
             .projection(projection)

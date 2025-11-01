@@ -16,5 +16,5 @@ pub enum SessionRepoError {
 
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
-    async fn find_by_id(&self, id: &str) -> Result<Session, SessionRepoError>;
+    async fn find_by_id(&self, id: &str, business_id: &str) -> Result<Session, SessionRepoError>;
 }

@@ -33,18 +33,31 @@ pub async fn session_guard(
         ));
     };
 
-    // Obtener session_id del AuthContext (inyectado por auth_guard)
-    let Some(session_id) = req.extensions()
-        .get::<AuthContext>()
-        .and_then(|ctx| ctx.session_id.clone()) else {
-        // Si no hay session_id, retornar error
+    // Obtener session_id y business_id del AuthContext (inyectado por auth_guard)
+    // Solo clonamos AuthContext una vez, luego movemos sus campos directamente
+    let Some(auth_ctx) = req.extensions().get::<AuthContext>().cloned() else {
+        return Ok(req.into_response(
+            unauthorized("Authentication required").map_into_boxed_body(),
+        ));
+    };
+    
+    // Extraer session_id: movemos el String del Option sin clonar
+    let Some(session_id) = auth_ctx.session_id else {
         return Ok(req.into_response(
             unauthorized("Session ID is required").map_into_boxed_body(),
         ));
     };
     
-    // Consultar la sesión en MongoDB usando el use case
-    match services.get_session.execute(&session_id).await {
+    // business_id ya es String (no Option), lo movemos directamente
+    let business_id = auth_ctx.business_id;
+    if business_id.is_empty() {
+        return Ok(req.into_response(
+            unauthorized("Business ID is required").map_into_boxed_body(),
+        ));
+    }
+    
+    // Consultar la sesión en MongoDB usando el use case (filtra por sessionId y businessId)
+    match services.get_session.execute(&session_id, &business_id).await {
         Ok(session) => {
             // Guardar el language de la sesión en extensions para que los handlers lo usen
             req.extensions_mut().insert(session.language);

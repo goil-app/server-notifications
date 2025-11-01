@@ -8,7 +8,7 @@ pub struct GetSessionUseCase<R: SessionRepository> {
 impl<R: SessionRepository> GetSessionUseCase<R> {
     pub fn new(repo: R) -> Self { Self { repo } }
 
-    pub async fn execute(&self, session_id: &str) -> Result<Session, SessionRepoError> {
-        self.repo.find_by_id(session_id).await
+    pub async fn execute(&self, session_id: &str, business_id: &str) -> Result<Session, SessionRepoError> {
+        self.repo.find_by_id(session_id, business_id).await
     }
 }
