@@ -1,4 +1,4 @@
-use mongodb::bson::Document;
+use mongodb::bson::{Document, Bson};
 use chrono::{DateTime, Utc, SecondsFormat};
 use serde::Serialize;
 
@@ -59,18 +59,27 @@ pub fn doc_to_domain(doc: Document, language: &str) -> Result<Notification, Noti
 
     let payload_type = doc.get_i32("payloadType").unwrap_or(1);
 
-    // Leer linked del documento
-    let linked = if let Ok(linked_doc) = doc.get_document("linked") {
+    // Leer accountTypeTargets del documento (array de ObjectIds)
+    let account_type_targets: Vec<String> = doc
+        .get_array("accountTypeTargets")
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    // Leer linked del documento - leer directamente lo que venga
+    let linked = if let Some(Bson::Document(linked_doc)) = doc.get("linked") {
         let linked_type = linked_doc.get_i32("type").unwrap_or(0);
         let object_id = linked_doc
             .get_object_id("objectId")
             .ok()
-            .map(|oid| object_id_to_string_or_empty(Some(oid.clone())))
+            .map(|oid| oid.to_hex())
             .filter(|s| !s.is_empty());
-        // Convertir object de BSON a JSON si existe
-        let object = linked_doc
-            .get("object")
-            .and_then(|b| Some(b.clone().into_relaxed_extjson()));
+        let object = linked_doc.get("object")
+            .and_then(|b| {
+                match b {
+                    Bson::Null => None,
+                    _ => Some(b.clone().into_relaxed_extjson()),
+                }
+            });
         Linked { linked_type, object_id, object }
     } else {
         Linked { linked_type: 0, object_id: None, object: None }
@@ -93,6 +102,7 @@ pub fn doc_to_domain(doc: Document, language: &str) -> Result<Notification, Noti
         business_id: None, // Viene del contexto de autenticación (JWT), no del documento
         linked,
         browser,
+        account_type_targets,
     })
 }
 
@@ -147,8 +157,9 @@ pub fn domain_to_response(n: Notification) -> NotificationResponse {
         creationDate: n.creation_date.to_rfc3339_opts(SecondsFormat::Millis, true),
         payloadType: n.payload_type,
         isRead: false,
-        accountTypesIds: vec![],
+        accountTypesIds: n.account_type_targets,
         linked: LinkedDto { r#type: n.linked.linked_type, objectId: n.linked.object_id, object: n.linked.object },
     };
+    
     NotificationResponse { notification: dto }
 }

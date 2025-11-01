@@ -70,10 +70,8 @@ impl NotificationController {
                 business_ids.clone()
             };
 
-            // 1. Buscar todos los usuarios que tengan el mismo teléfono en los businessIds
             let phone = &user.phone;
             let users_result = services.get_users.execute(phone, &business_ids_to_use).await;
-            println!("users_result: {:?}", users_result);
             let users_found = match users_result {
                 Ok(users) => users,
                 Err(e) => {
@@ -132,7 +130,6 @@ impl NotificationController {
                 .map(|id| (*id).clone())
                 .collect()
         };
-
         let resp = domain_to_response(notification);
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }

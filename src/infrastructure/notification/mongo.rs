@@ -36,6 +36,7 @@ impl NotificationRepository for MongoNotificationRepository {
             Some(d) => d,
             None => return Err(NotificationRepoError::NotFound),
         };
+
         doc_to_domain(doc, language)
     }
 
@@ -101,11 +102,6 @@ impl NotificationRepository for MongoNotificationRepository {
                 { "phones": { "$in": phones } }
             ]
         };
-
-        let json_value = serde_json::to_value(&filter).unwrap();
-
-    // Imprime con formato
-    println!("{}", serde_json::to_string_pretty(&json_value).unwrap());
 
         let options = FindOptions::builder()
             .projection(doc! { "_id": 1 })

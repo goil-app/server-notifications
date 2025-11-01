@@ -25,6 +25,7 @@ pub struct Notification {
     pub business_id: Option<String>,
     pub linked: Linked,
     pub browser: i32,
+    pub account_type_targets: Vec<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
