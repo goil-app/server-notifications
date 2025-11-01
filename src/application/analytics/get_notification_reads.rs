@@ -1,5 +1,4 @@
 use crate::domain::analytics::{NotificationReadRepository, NotificationReadRepoError};
-use crate::domain::SimplifiedUser;
 
 #[derive(Clone)]
 pub struct GetNotificationReadsUseCase<R: NotificationReadRepository> {
@@ -9,8 +8,8 @@ pub struct GetNotificationReadsUseCase<R: NotificationReadRepository> {
 impl<R: NotificationReadRepository> GetNotificationReadsUseCase<R> {
     pub fn new(repo: R) -> Self { Self { repo } }
 
-    pub async fn execute(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationReadRepoError> {
-        self.repo.find_by_user_id(simplified_user).await
+    pub async fn execute(&self, phone: &str, business_ids: &[String]) -> Result<Vec<String>, NotificationReadRepoError> {
+        self.repo.find_by_phone_and_business_ids(phone, business_ids).await
     }
 }
 

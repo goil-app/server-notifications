@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use mongodb::Database;
 use mongodb::bson::{doc, oid::ObjectId, Document};
-use mongodb::options::FindOneOptions;
+use mongodb::options::{FindOneOptions, FindOptions};
+use futures::stream::TryStreamExt;
 use crate::domain::{SimplifiedUser, UserRepository, UserRepoError};
 use crate::mappers::user::doc_to_simplified;
 
@@ -31,5 +32,46 @@ impl UserRepository for MongoUserRepository {
             None => return Err(UserRepoError::NotFound)
         };
         doc_to_simplified(doc)
+    }
+
+    async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<SimplifiedUser>, UserRepoError> {
+        // Convertir businessIds de String a ObjectId
+        let business_oids: Result<Vec<ObjectId>, _> = business_ids
+            .iter()
+            .map(|bid| ObjectId::parse_str(bid))
+            .collect();
+        let business_oids = business_oids.map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
+        
+        // Buscar usuarios por phone y filtrar por businessId que esté en el array
+        let filter = doc! {
+            "phone": phone,
+            "businessId": { "$in": business_oids }
+        };
+
+        let options = FindOptions::builder()
+            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1, "businessId": 1 })
+            .build();
+
+        let coll = self.db.collection::<Document>("Account");
+        let mut cursor = coll
+            .find(filter, options)
+            .await
+            .map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
+        
+        let mut users = Vec::new();
+        while let Some(result) = cursor
+            .try_next()
+            .await
+            .map_err(|e| UserRepoError::Unexpected(e.to_string()))? {
+                match doc_to_simplified(result) {
+                    Ok(user) => users.push(user),
+                    Err(e) => {
+                        eprintln!("[MongoUserRepository::find_by_phone_and_business_ids] Error mapping document: {:?}", e);
+                        // Continuamos con el siguiente documento en lugar de fallar
+                    }
+                }
+        }
+
+        Ok(users)
     }
 }

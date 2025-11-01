@@ -39,4 +39,5 @@ pub enum NotificationRepoError {
 pub trait NotificationRepository: Send + Sync {
     async fn find_by_id(&self, id: &str, language: &str, business_id: &str) -> Result<Notification, NotificationRepoError>;
     async fn find_user_notifications(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationRepoError>;
+    async fn find_users_notifications(&self, users: &[SimplifiedUser]) -> Result<Vec<String>, NotificationRepoError>;
 }

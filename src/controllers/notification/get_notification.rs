@@ -15,6 +15,7 @@ impl NotificationController {
         req: HttpRequest,
         services: actix_web::web::Data<AppServices>,
         id: String,
+        business_ids: Vec<String>,
     ) -> impl Responder {
         // Obtener el language de la sesión desde extensions (inyectado por session_guard)
         // Si no hay language, usar "es" por defecto
@@ -59,52 +60,79 @@ impl NotificationController {
                 None // Continuamos aunque falle obtener el usuario
             }
         };
-        println!("user: {:?}", user);
 
-        // Obtener notificaciones del usuario y notification reads en paralelo si existe el usuario
-        let (user_notifications, notification_reads) = if let Some(ref user) = user {
-            // Crear un usuario con el phone hasheado en SHA512
-            let mut user_with_hashed_phone = user.clone();
-            user_with_hashed_phone.phone = sha512_hash(&user.phone);
-            
-            // Ejecutar ambas consultas en paralelo
-            let (user_notifications_result, notification_reads_result) = tokio::join!(
-                services.get_user_notifications.execute(&user_with_hashed_phone),
-                services.get_notification_reads.execute(&user_with_hashed_phone)
+        // Nueva lógica: buscar usuarios con el mismo teléfono y obtener notificaciones de todos
+        let (all_notifications, notification_reads) = if let Some(ref user) = user {
+            // Preparar businessIds: si no hay en query params, usar solo el business_id del token
+            let business_ids_to_use = if business_ids.is_empty() {
+                vec![business_id.clone()]
+            } else {
+                business_ids.clone()
+            };
+
+            // 1. Buscar todos los usuarios que tengan el mismo teléfono en los businessIds
+            let phone = &user.phone;
+            let users_result = services.get_users.execute(phone, &business_ids_to_use).await;
+            println!("users_result: {:?}", users_result);
+            let users_found = match users_result {
+                Ok(users) => users,
+                Err(e) => {
+                    eprintln!("[NotificationController::get_notification] Error fetching users by phone {}: {:?}", phone, e);
+                    vec![] // Continuar con array vacío si falla
+                }
+            };
+
+            // 2. Preparar usuarios con phone hasheado y obtener todas las notificaciones en una sola query
+            let users_with_hashed_phone: Vec<_> = users_found.iter()
+                .map(|u| {
+                    let mut user_with_hashed_phone = u.clone();
+                    user_with_hashed_phone.phone = sha512_hash(&u.phone);
+                    user_with_hashed_phone
+                })
+                .collect();
+
+            // Preparar phone hasheado antes del tokio::join! para evitar problemas de ownership
+            let hashed_phone = sha512_hash(phone);
+
+            // Ejecutar búsqueda de notificaciones para todos los usuarios en paralelo con notification reads
+            let (all_notifications_result, notification_reads_result) = tokio::join!(
+                services.get_users_notifications.execute(&users_with_hashed_phone),
+                services.get_notification_reads.execute(&hashed_phone, &business_ids_to_use)
             );
             
-            let user_notifications = match user_notifications_result {
-                Ok(un) => Some(un),
+            let all_notifications = match all_notifications_result {
+                Ok(notifications) => Some(notifications),
                 Err(e) => {
-                    eprintln!("[NotificationController::get_notification] Error fetching user notifications {}: {:?}", auth_ctx.user_id, e);
+                    eprintln!("[NotificationController::get_notification] Error fetching notifications for users: {:?}", e);
                     None
                 }
             };
-            
+
             let notification_reads = match notification_reads_result {
                 Ok(nr) => Some(nr),
                 Err(e) => {
-                    eprintln!("[NotificationController::get_notification] Error fetching notification reads {}: {:?}", auth_ctx.user_id, e);
+                    eprintln!("[NotificationController::get_notification] Error fetching notification reads for phone: {:?}", e);
                     None
                 }
             };
             
-            (user_notifications, notification_reads)
+            (all_notifications, notification_reads)
         } else {
             (None, None)
         };
         
-        // Calcular notificaciones no leídas: notificaciones en user_notifications pero no en notification_reads
-        let _unread_notification_ids: Vec<String> = {
-            let user_notifications = user_notifications.unwrap_or_default();
+        // 4. Comparar qué notificaciones no tienen ningún read
+        let unread_notification_ids: Vec<String> = {
+            let all_notifications: Vec<String> = all_notifications.unwrap_or_default();
             let reads = notification_reads.unwrap_or_default();
-            let notifications_set: HashSet<&String> = user_notifications.iter().collect();
+            let notifications_set: HashSet<&String> = all_notifications.iter().collect();
             let reads_set: HashSet<&String> = reads.iter().collect();
             notifications_set
                 .difference(&reads_set)
                 .map(|id| (*id).clone())
                 .collect()
         };
+        println!("unread_notification_ids: {:?}", unread_notification_ids.len());
         let resp = domain_to_response(notification);
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }

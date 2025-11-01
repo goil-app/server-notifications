@@ -5,7 +5,6 @@ use mongodb::options::FindOptions;
 use futures::stream::TryStreamExt;
 
 use crate::domain::analytics::{NotificationReadRepository, NotificationReadRepoError};
-use crate::domain::SimplifiedUser;
 use crate::mappers::common::object_id_to_string_or_empty;
 
 #[derive(Clone)]
@@ -19,16 +18,18 @@ impl MongoNotificationReadRepository {
 
 #[async_trait]
 impl NotificationReadRepository for MongoNotificationReadRepository {
-    async fn find_by_user_id(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationReadRepoError> {
-        let user_oid = ObjectId::parse_str(&simplified_user.id)
-            .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
-        let business_oid = ObjectId::parse_str(&simplified_user.business_id)
-            .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
+    async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<String>, NotificationReadRepoError> {
+        // Convertir businessIds de String a ObjectId
+        let business_oids: Result<Vec<ObjectId>, _> = business_ids
+            .iter()
+            .map(|bid| ObjectId::parse_str(bid))
+            .collect();
+        let business_oids = business_oids.map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
         
-        // Buscar notification reads por accountId o phone, y filtrar por businessId
+        // Buscar notification reads por phone y filtrar por businessId (ObjectId) que esté en el array
         let filter = doc! {
-            "accountId": user_oid,
-            "businessId": business_oid
+            "phone": phone,
+            "businessId": { "$in": business_oids }
         };
 
         let options = FindOptions::builder()

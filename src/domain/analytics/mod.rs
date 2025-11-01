@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use crate::domain::SimplifiedUser;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Estructura de dominio, puede usarse en el futuro
@@ -20,6 +19,6 @@ pub enum NotificationReadRepoError {
 
 #[async_trait]
 pub trait NotificationReadRepository: Send + Sync {
-    async fn find_by_user_id(&self, simplified_user: &SimplifiedUser) -> Result<Vec<String>, NotificationReadRepoError>;
+    async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<String>, NotificationReadRepoError>;
 }
 
