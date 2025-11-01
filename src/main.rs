@@ -1,5 +1,6 @@
 use actix_web::{App, HttpServer};
 use actix_web::middleware::{NormalizePath, TrailingSlash};
+use std::time::Duration;
 mod routes;
 mod middleware;
 mod types;
@@ -23,12 +24,34 @@ async fn main() -> std::io::Result<()> {
     // Crea todos los servicios de la aplicación
     let services = infrastructure::services::AppServices::new(&databases);
 
+    // Configurar workers: Para 2 vCPU y 4GB RAM, optimizamos recursos
+    // Cada worker tiene su propio pool de MongoDB, así que el pool total = workers × max_pool_size
+    // Con recursos limitados, usar 2 workers (uno por vCPU) es ideal
+    let num_workers = std::env::var("ACTIX_WORKERS")
+        .ok()
+        .and_then(|w| w.parse::<usize>().ok())
+        .unwrap_or_else(|| {
+            // Para 2 vCPU: usar 2 workers es óptimo
+            // Más workers consumen más memoria y conexiones
+            std::thread::available_parallelism()
+                .map(|n| n.get().min(2)) // Máximo 2 workers para recursos limitados
+                .unwrap_or(2)
+        });
+    
+    println!("[main] Starting server with {} workers (machine: 2vCPU, 4GB RAM)", num_workers);
+    println!("[main] MongoDB pool: {} connections per worker (total: {} connections)", 30, num_workers * 30);
+    
     HttpServer::new(move || App::new()
         .wrap(NormalizePath::new(TrailingSlash::Trim))
         .app_data(actix_web::web::Data::new(services.clone()))
         .service(routes::health::router())
         .service(routes::notification::router()))
         .bind(("0.0.0.0", 8080))?
+        .workers(num_workers)
+        // Optimizaciones para recursos limitados (4GB RAM)
+        .client_timeout(Duration::from_millis(5000)) // Timeout de cliente: 5 segundos
+        .client_disconnect_timeout(Duration::from_millis(1000)) // Desconectar clientes inactivos rápidamente
+        .keep_alive(Duration::from_secs(30)) // Keep-alive más corto para liberar conexiones
         .run()
         .await
 }
