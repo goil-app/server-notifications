@@ -51,13 +51,13 @@ impl NotificationRepository for MongoNotificationRepository {
             .collect();
         let business_oids = business_oids.map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
         
-        let mut user_ids = Vec::new();
+        let mut user_ids_set = HashSet::new();
         let mut account_types_set = HashSet::new();
         let mut phones_set = HashSet::new();
         let mut oldest_creation_date: Option<mongodb::bson::DateTime> = None;
 
         for user in users {
-            user_ids.push(user.id.clone());
+            user_ids_set.insert(user.id.clone());
             account_types_set.insert(user.account_type.clone());
             phones_set.insert(user.phone.clone());
             
@@ -69,8 +69,8 @@ impl NotificationRepository for MongoNotificationRepository {
             };
         }
 
-        // Eliminar duplicados de user_ids
-        let user_ids: Vec<String> = user_ids.into_iter().collect::<HashSet<_>>().into_iter().collect();
+        // Convertir sets a vectores (ya no hay duplicados que eliminar)
+        let user_ids: Vec<String> = user_ids_set.into_iter().collect();
         let account_types: Vec<String> = account_types_set.into_iter().collect();
         let phones: Vec<String> = phones_set.into_iter().collect();
 
@@ -96,8 +96,8 @@ impl NotificationRepository for MongoNotificationRepository {
                 { "topic": { "$in": account_types.clone() } },
                 { "topic": { "$in": topic_all_business_ids } },
                 { "userTargets": { "$in": user_ids.clone() } },
-                { "accountTypeTargets": { "$in": account_types } },
-                { "userTargetsChannel": { "$in": user_ids } },
+                { "accountTypeTargets": { "$in": account_types.clone() } },
+                { "userTargetsChannel": { "$in": user_ids.clone() } },
                 { "phones": { "$in": phones } }
             ]
         };

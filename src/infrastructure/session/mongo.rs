@@ -23,7 +23,7 @@ impl SessionRepository for MongoSessionRepository {
             "sessionId": id,
             "businessId": bid 
         };
-        let projection = doc! { "_id": 1, "language": 1 };
+        let projection = doc! { "language": 1 };
         let find_options = mongodb::options::FindOneOptions::builder()
             .projection(projection)
             .build();
