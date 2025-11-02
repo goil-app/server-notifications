@@ -133,7 +133,7 @@ impl NotificationController {
                 .map(|id| (*id).clone())
                 .collect()
         };
-        let resp = domain_to_response(notification);
+        let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone())).await;
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }
 }

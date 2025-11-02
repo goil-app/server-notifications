@@ -6,7 +6,7 @@ mod middleware;
 mod types;
 mod domain;
 mod application;
-mod infrastructure { pub mod notification; pub mod session; pub mod user; pub mod analytics; pub mod db; pub mod services; }
+mod infrastructure { pub mod notification; pub mod session; pub mod user; pub mod analytics; pub mod db; pub mod services; pub mod s3; }
 mod response;
 mod mappers;
 mod controllers;
@@ -23,7 +23,8 @@ async fn main() -> std::io::Result<()> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("mongo init error: {}", e)))?;
 
     // Crea todos los servicios de la aplicación
-    let services = infrastructure::services::AppServices::new(&databases);
+    let services = infrastructure::services::AppServices::new(&databases).await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("s3 signer init error: {}", e)))?;
 
     // Configurar workers: Para 2 vCPU y 4GB RAM, optimizamos recursos
     // Cada worker tiene su propio pool de MongoDB, así que el pool total = workers × max_pool_size

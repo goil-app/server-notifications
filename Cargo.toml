@@ -19,6 +19,10 @@ bson = "2"
 futures = "0.3"
 sha2 = "0.10"
 hex = "0.4"
+aws-config = "1.1"
+aws-sdk-s3 = "1.17"
+aws-credential-types = "1.1"
+http = "1"
 
 
 [profile.release]
