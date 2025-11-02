@@ -1,6 +1,5 @@
 use actix_web::{HttpRequest, HttpResponse, Responder};
 use actix_web::HttpMessage;
-use std::collections::HashSet;
 use crate::infrastructure::services::AppServices;
 use crate::response::ApiResponse;
 use crate::types::AuthContext;
@@ -120,7 +119,11 @@ impl NotificationController {
         };
         
         // 4. Comparar qué notificaciones no tienen ningún read
-        let unread_notification_ids: Vec<String> = {
+        // Nota: Esta lógica se calcula pero no se usa actualmente en la respuesta.
+        // Se mantiene para futuras implementaciones donde se pueda usar isRead.
+        #[allow(unused_variables)]
+        let _unread_notification_ids: Vec<String> = {
+            use std::collections::HashSet;
             let all_notifications: Vec<String> = all_notifications.unwrap_or_default();
             let reads = notification_reads.unwrap_or_default();
             let notifications_set: HashSet<&String> = all_notifications.iter().collect();

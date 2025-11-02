@@ -1,5 +1,5 @@
 pub mod notification;
-pub use notification::{Notification, Linked, NotificationRepository, NotificationRepoError};
+pub use notification::{Notification, NotificationRepository, NotificationRepoError};
 
 pub mod session;
 pub use session::{Session, SessionRepository, SessionRepoError};

@@ -21,14 +21,11 @@ pub fn doc_to_simplified(doc: Document) -> Result<SimplifiedUser, UserRepoError>
     
     let account_type = object_id_to_string_or_empty(doc.get_object_id("accountType").ok());
     
-    let business_id = object_id_to_string_or_empty(doc.get_object_id("businessId").ok());
-    
     Ok(SimplifiedUser {
         id,
         phone,
         creation_date,
         account_type,
-        business_id,
     })
 }
 

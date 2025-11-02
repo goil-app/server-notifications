@@ -4,7 +4,6 @@ use mongodb::bson::{doc, oid::ObjectId, Document};
 use mongodb::options::FindOptions;
 use futures::stream::TryStreamExt;
 use std::collections::HashSet;
-use serde_json;
 
 use crate::domain::{Notification, NotificationRepository, NotificationRepoError, SimplifiedUser};
 use crate::mappers::{notification::doc_to_domain, common::object_id_to_string_or_empty};

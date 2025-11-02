@@ -21,7 +21,7 @@ impl UserRepository for MongoUserRepository {
         let oid = ObjectId::parse_str(id).map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
         let bid = ObjectId::parse_str(business_id).map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
         let options = FindOneOptions::builder()
-            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1, "businessId": 1 })
+            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1 })
             .build();
         let coll = self.db.collection::<Document>("Account");
         let doc = match coll
@@ -49,7 +49,7 @@ impl UserRepository for MongoUserRepository {
         };
 
         let options = FindOptions::builder()
-            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1, "businessId": 1 })
+            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1 })
             .build();
 
         let coll = self.db.collection::<Document>("Account");

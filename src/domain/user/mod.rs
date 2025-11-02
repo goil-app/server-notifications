@@ -7,7 +7,6 @@ pub struct SimplifiedUser {
     pub phone: String,
     pub creation_date: DateTime<Utc>,
     pub account_type: String,
-    pub business_id: String,
 }
 
 #[derive(thiserror::Error, Debug)]
