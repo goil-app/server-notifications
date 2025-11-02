@@ -34,6 +34,31 @@ impl UserRepository for MongoUserRepository {
         doc_to_simplified(doc)
     }
 
+    async fn find_by_id_and_business_ids(&self, id: &str, business_ids: &[String]) -> Result<SimplifiedUser, UserRepoError> {
+        let oid = ObjectId::parse_str(id).map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
+        
+        // Convertir businessIds de String a ObjectId
+        let business_oids: Result<Vec<ObjectId>, _> = business_ids
+            .iter()
+            .map(|bid| ObjectId::parse_str(bid))
+            .collect();
+        let business_oids = business_oids.map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
+        
+        let options = FindOneOptions::builder()
+            .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1 })
+            .build();
+        
+        let coll = self.db.collection::<Document>("Account");
+        let doc = match coll
+            .find_one(doc! { "_id": oid, "businessId": { "$in": business_oids } }, options)
+            .await
+            .map_err(|e| UserRepoError::Unexpected(e.to_string()))? {
+            Some(d) => d,
+            None => return Err(UserRepoError::NotFound)
+        };
+        doc_to_simplified(doc)
+    }
+
     async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<SimplifiedUser>, UserRepoError> {
         // Convertir businessIds de String a ObjectId
         let business_oids: Result<Vec<ObjectId>, _> = business_ids

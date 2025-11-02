@@ -11,3 +11,6 @@ pub mod analytics;
 // Se exportan para uso en application e infrastructure layers
 #[allow(unused_imports)]
 pub use analytics::{NotificationReadRepository, NotificationReadRepoError};
+
+pub mod business;
+pub use business::{Business, BusinessRepository, BusinessRepoError};

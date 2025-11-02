@@ -53,11 +53,7 @@ impl S3UrlSigner {
             return key.to_string();
         }
 
-        // Log el key original
-        println!("[S3UrlSigner::normalize_key] Original key: '{}'", key);
-
         // Transformar "notification/image/" a "notifications/images/"
-        // Usar replace para manejar todos los casos
         let normalized = if key.starts_with("notification/image/") {
             format!("notifications/images/{}", &key[19..]) // "notification/image/".len() = 19
         } else if key.starts_with("notification/images/") {
@@ -67,12 +63,6 @@ impl S3UrlSigner {
         } else {
             key.to_string() // Ya está bien o tiene otro formato
         };
-
-        if key != normalized {
-            println!("[S3UrlSigner::normalize_key] Normalized: '{}' -> '{}'", key, normalized);
-        } else {
-            println!("[S3UrlSigner::normalize_key] No normalization needed: '{}'", key);
-        }
 
         normalized
     }
@@ -89,9 +79,6 @@ impl S3UrlSigner {
     pub async fn sign_url(&self, key: &str, expires_in: u64) -> Result<String, String> {
         // Normalizar la key antes de firmarla
         let normalized_key = self.normalize_key(key);
-        
-        println!("[S3UrlSigner::sign_url] Bucket: '{}', Key: '{}', Expires: {}s", 
-                 self.bucket_name, normalized_key, expires_in);
 
         // Construir la configuración de presigning (equivalente a { expiresIn: params.Expires } en TS)
         let presigning_config = PresigningConfig::expires_in(Duration::from_secs(expires_in))
@@ -108,10 +95,7 @@ impl S3UrlSigner {
             .map_err(|e| format!("Error generating presigned URL for bucket '{}', key '{}': {}", 
                                  self.bucket_name, normalized_key, e))?;
 
-        let signed_url = request.uri().to_string();
-        println!("[S3UrlSigner::sign_url] Generated signed URL (full): {}", signed_url);
-        
-        Ok(signed_url)
+        Ok(request.uri().to_string())
     }
 
     /// Firma múltiples URLs de S3

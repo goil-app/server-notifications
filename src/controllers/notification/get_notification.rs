@@ -35,10 +35,24 @@ impl NotificationController {
                 .json(ApiResponse::<()>::error("Missing or invalid business_id"));
         };
         
-        // Ejecutar ambas consultas en paralelo
-        let (notification_result, user_result) = tokio::join!(
+        // Preparar businessIds: si no hay en query params, usar solo el business_id del token
+        let business_ids_to_use = if business_ids.is_empty() {
+            vec![business_id.clone()]
+        } else {
+            business_ids.clone()
+        };
+        
+        // Buscar usuario: si hay query params, buscar en todos los business_ids, sino en el del token
+        let user_result = if business_ids.is_empty() {
+            services.get_user.execute(&auth_ctx.user_id, &business_id).await
+        } else {
+            services.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
+        };
+        
+        // Ejecutar las consultas en paralelo: notification y business
+        let (notification_result, business_result) = tokio::join!(
             services.get_notification.execute(&id, &language, &business_id),
-            services.get_user.execute(&auth_ctx.user_id, &business_id)
+            services.get_business.execute(&business_id)
         );
         
         // Procesar resultado de notificación
@@ -60,16 +74,20 @@ impl NotificationController {
             }
         };
 
-        // Nueva lógica: buscar usuarios con el mismo teléfono y obtener notificaciones de todos
-        let (all_notifications, notification_reads) = if let Some(ref user) = user {
-            // Preparar businessIds: si no hay en query params, usar solo el business_id del token
-            let business_ids_to_use = if business_ids.is_empty() {
-                vec![business_id.clone()]
-            } else {
-                business_ids.clone()
-            };
+        // Procesar resultado de business (opcional, continuamos aunque falle)
+        let business = match business_result {
+            Ok(b) => Some(b),
+            Err(e) => {
+                eprintln!("[NotificationController::get_notification] Error fetching business {}: {:?}", business_id, e);
+                None // Continuamos aunque falle obtener el business
+            }
+        };
 
+        // Nueva lógica: buscar usuarios con el mismo teléfono y obtener notificaciones de todos
+        // Los usuarios deben pertenecer a los businessIds de la query (o al del token si no hay query params)
+        let (all_notifications, notification_reads) = if let Some(ref user) = user {
             let phone = &user.phone;
+            // Buscar usuarios que pertenezcan a los businessIds especificados
             let users_result = services.get_users.execute(phone, &business_ids_to_use).await;
             let users_found = match users_result {
                 Ok(users) => users,
@@ -121,8 +139,7 @@ impl NotificationController {
         // 4. Comparar qué notificaciones no tienen ningún read
         // Nota: Esta lógica se calcula pero no se usa actualmente en la respuesta.
         // Se mantiene para futuras implementaciones donde se pueda usar isRead.
-        #[allow(unused_variables)]
-        let _unread_notification_ids: Vec<String> = {
+        let unread_notification_ids: Vec<String> = {
             use std::collections::HashSet;
             let all_notifications: Vec<String> = all_notifications.unwrap_or_default();
             let reads = notification_reads.unwrap_or_default();
@@ -133,7 +150,13 @@ impl NotificationController {
                 .map(|id| (*id).clone())
                 .collect()
         };
-        let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone())).await;
+        // Obtener businessName del business si existe, sino usar "Goil" por defecto
+        let business_name = business.map(|b| b.name).unwrap_or_else(|| "Goil".to_string());
+        
+        // Obtener el número de notificaciones pendientes de leer
+        let unread_count = unread_notification_ids.len() as i32;
+        
+        let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }
 }

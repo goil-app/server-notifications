@@ -20,6 +20,7 @@ pub enum UserRepoError {
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn find_simplified_by_id(&self, id: &str, business_id: &str) -> Result<SimplifiedUser, UserRepoError>;
+    async fn find_by_id_and_business_ids(&self, id: &str, business_ids: &[String]) -> Result<SimplifiedUser, UserRepoError>;
     async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<SimplifiedUser>, UserRepoError>;
 }
 

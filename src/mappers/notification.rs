@@ -75,6 +75,8 @@ pub async fn domain_to_response(
     n: Notification, 
     s3_signer: &crate::infrastructure::s3::S3UrlSigner,
     business_id: Option<String>,
+    business_name: Option<String>,
+    unread_count: i32,
 ) -> NotificationResponse {
     // Firmar URLs de S3 para imageUrls
     // Duración por defecto: 600 segundos (10 minutos)
@@ -104,8 +106,8 @@ pub async fn domain_to_response(
     
     NotificationResponse { 
         notification: dto,
-        badge: Some(11), // Valor por defecto, se puede hacer dinámico en el futuro
-        businessName: Some("Goil".to_string()), // Valor por defecto, se puede hacer dinámico en el futuro
+        badge: Some(unread_count),
+        businessName: business_name,
         businessId: business_id,
     }
 }
