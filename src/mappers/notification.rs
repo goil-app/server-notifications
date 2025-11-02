@@ -1,5 +1,5 @@
 use mongodb::bson::{Document, Bson};
-use chrono::{DateTime, Utc, SecondsFormat};
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::domain::{Notification, Linked, NotificationRepoError};
@@ -119,46 +119,19 @@ pub struct NotificationDto {
     pub title: String,
     pub body: String,
     pub imageUrls: Vec<String>,
-    pub url: String,
-    pub browser: i32,
     pub imagePath: Vec<String>,
-    pub userTargets: Vec<String>,
-    pub topic: String,
-    pub r#type: i32,
-    pub creationDate: String,
-    pub payloadType: i32,
-    pub isRead: bool,
-    pub accountTypesIds: Vec<String>,
-    pub linked: LinkedDto,
 }
-
-#[allow(non_snake_case)] // Los nombres están en camelCase para la API externa
-#[derive(Serialize)]
-pub struct LinkedDto {
-    pub r#type: i32,
-    pub objectId: Option<String>,
-    pub object: Option<serde_json::Value>,
-}
-
 
 pub fn domain_to_response(n: Notification) -> NotificationResponse {
-
+    // Mapear imageUrls desde image_paths (mismo contenido)
+    let image_urls = n.image_paths.clone();
+    
     let dto = NotificationDto {
         id: n.id,
         title: n.title,
         body: n.body,
-        imageUrls: vec![],
-        url: n.url,
-        browser: n.browser,
+        imageUrls: image_urls,
         imagePath: n.image_paths,
-        userTargets: n.user_targets,
-        topic: n.topic.unwrap_or_default(),
-        r#type: n.notification_type,
-        creationDate: n.creation_date.to_rfc3339_opts(SecondsFormat::Millis, true),
-        payloadType: n.payload_type,
-        isRead: false,
-        accountTypesIds: n.account_type_targets,
-        linked: LinkedDto { r#type: n.linked.linked_type, objectId: n.linked.object_id, object: n.linked.object },
     };
     
     NotificationResponse { notification: dto }

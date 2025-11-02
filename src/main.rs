@@ -42,12 +42,13 @@ async fn main() -> std::io::Result<()> {
     println!("[main] Starting server with {} workers (machine: 2vCPU, 4GB RAM)", num_workers);
     println!("[main] MongoDB pool: {} connections per worker (total: {} connections)", 30, num_workers * 30);
     
+    let port =  std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap_or(8080);
     HttpServer::new(move || App::new()
         .wrap(NormalizePath::new(TrailingSlash::Trim))
         .app_data(actix_web::web::Data::new(services.clone()))
         .service(routes::health::router())
         .service(routes::notification::router()))
-        .bind(("0.0.0.0", 8080))?
+        .bind(("0.0.0.0", port))?
         .workers(num_workers)
         // Optimizaciones para recursos limitados (4GB RAM)
         .client_request_timeout(Duration::from_millis(5000)) // Timeout de cliente: 5 segundos
