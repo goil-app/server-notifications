@@ -1,9 +1,10 @@
-use crate::application::{GetNotificationUseCase, GetSessionUseCase, GetUserUseCase, GetUserByBusinessIdsUseCase, GetUsersUseCase, GetUsersNotificationsUseCase, GetNotificationReadsUseCase, GetBusinessUseCase};
+use crate::application::{GetNotificationUseCase, GetGetStreamMessageUseCase, GetGetStreamUnreadCountUseCase, GetSessionUseCase, GetUserUseCase, GetUserByBusinessIdsUseCase, GetUsersUseCase, GetUsersNotificationsUseCase, GetNotificationReadsUseCase, GetBusinessUseCase};
 use crate::infrastructure::notification::mongo::MongoNotificationRepository;
 use crate::infrastructure::session::mongo::MongoSessionRepository;
 use crate::infrastructure::user::mongo::MongoUserRepository;
 use crate::infrastructure::analytics::mongo::MongoNotificationReadRepository;
 use crate::infrastructure::business::mongo::MongoBusinessRepository;
+use crate::infrastructure::external::getstream::HttpGetStreamRepository;
 use crate::infrastructure::db::Databases;
 use crate::infrastructure::s3::S3UrlSigner;
 
@@ -12,6 +13,8 @@ use crate::infrastructure::s3::S3UrlSigner;
 #[derive(Clone)]
 pub struct AppServices {
     pub get_notification: GetNotificationUseCase<MongoNotificationRepository>,
+    pub get_getstream_message: GetGetStreamMessageUseCase<HttpGetStreamRepository>,
+    pub get_getstream_unread_count: GetGetStreamUnreadCountUseCase<HttpGetStreamRepository>,
     pub get_users_notifications: GetUsersNotificationsUseCase<MongoNotificationRepository>,
     pub get_session: GetSessionUseCase<MongoSessionRepository>,
     pub get_user: GetUserUseCase<MongoUserRepository>,
@@ -30,10 +33,13 @@ impl AppServices {
         let user_repo = MongoUserRepository::new(databases.account_db.clone());
         let notification_read_repo = MongoNotificationReadRepository::new(databases.analytics_db.clone());
         let business_repo = MongoBusinessRepository::new(databases.client_db.clone());
+        let external_repo = HttpGetStreamRepository::default();
         let s3_signer = S3UrlSigner::new().await?;
 
         Ok(Self {
             get_notification: GetNotificationUseCase::new(notification_repo.clone()),
+            get_getstream_message: GetGetStreamMessageUseCase::new(external_repo.clone()),
+            get_getstream_unread_count: GetGetStreamUnreadCountUseCase::new(external_repo),
             get_users_notifications: GetUsersNotificationsUseCase::new(notification_repo),
             get_session: GetSessionUseCase::new(session_repo),
             get_user: GetUserUseCase::new(user_repo.clone()),

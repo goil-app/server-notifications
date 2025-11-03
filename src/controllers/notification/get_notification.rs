@@ -49,9 +49,20 @@ impl NotificationController {
             services.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
         };
         
-        // Ejecutar las consultas en paralelo: notification y business
+        // Elegir origen de la notificación según si el id es UUID
+        let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
+        let notification_future = async {
+            if is_uuid {
+                services.get_getstream_message.execute(&id, &auth_ctx.user_id, &language, &business_id).await
+                    .map_err(|e| crate::domain::NotificationRepoError::Unexpected(format!("getstream: {}", e)))
+            } else {
+                services.get_notification.execute(&id, &language, &business_id).await
+            }
+        };
+
+        // Ejecutar las consultas en paralelo: notificación y business
         let (notification_result, business_result) = tokio::join!(
-            services.get_notification.execute(&id, &language, &business_id),
+            notification_future,
             services.get_business.execute(&business_id)
         );
         
@@ -154,7 +165,14 @@ impl NotificationController {
         let business_name = business.map(|b| b.name).unwrap_or_else(|| "Goil".to_string());
         
         // Obtener el número de notificaciones pendientes de leer
-        let unread_count = unread_notification_ids.len() as i32;
+        let server_unread_count = unread_notification_ids.len() as i32;
+        // Unread de GetStream (si falla, 0)
+        let getstream_unread_count = services
+            .get_getstream_unread_count
+            .execute(&auth_ctx.user_id)
+            .await
+            .unwrap_or(0);
+        let unread_count = server_unread_count + getstream_unread_count;
         
         let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;
         HttpResponse::Ok().json(ApiResponse::ok(resp))
