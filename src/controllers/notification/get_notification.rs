@@ -42,14 +42,16 @@ impl NotificationController {
             business_ids.clone()
         };
         
-        // Buscar usuario: si hay query params, buscar en todos los business_ids, sino en el del token
-        let user_result = if business_ids.is_empty() {
-            services.get_user.execute(&auth_ctx.user_id, &business_id).await
-        } else {
-            services.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
+        // Preparar futures concurrentes
+        // 1) Usuario (por businessIds de query o por token)
+        let user_future = async {
+            if business_ids.is_empty() {
+                services.get_user.execute(&auth_ctx.user_id, &business_id).await
+            } else {
+                services.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
+            }
         };
-        
-        // Elegir origen de la notificación según si el id es UUID
+        // 2) Notificación (Mongo o GetStream si id es UUID)
         let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
         let notification_future = async {
             if is_uuid {
@@ -59,11 +61,17 @@ impl NotificationController {
                 services.get_notification.execute(&id, &language, &business_id).await
             }
         };
+        // 3) Business
+        let business_future = services.get_business.execute(&business_id);
+        // 4) Unread de GetStream
+        let getstream_unread_future = services.get_getstream_unread_count.execute(&auth_ctx.user_id);
 
-        // Ejecutar las consultas en paralelo: notificación y business
-        let (notification_result, business_result) = tokio::join!(
+        // Ejecutar primera hornada en paralelo
+        let (user_result, notification_result, business_result, getstream_unread_result) = tokio::join!(
+            user_future,
             notification_future,
-            services.get_business.execute(&business_id)
+            business_future,
+            getstream_unread_future,
         );
         
         // Procesar resultado de notificación
@@ -166,12 +174,9 @@ impl NotificationController {
         
         // Obtener el número de notificaciones pendientes de leer
         let server_unread_count = unread_notification_ids.len() as i32;
-        // Unread de GetStream (si falla, 0)
-        let getstream_unread_count = services
-            .get_getstream_unread_count
-            .execute(&auth_ctx.user_id)
-            .await
-            .unwrap_or(0);
+        
+        // Unread de GetStream ya resuelto en paralelo (si falla, 0)
+        let getstream_unread_count = getstream_unread_result.unwrap_or(0);
         let unread_count = server_unread_count + getstream_unread_count;
         
         let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;

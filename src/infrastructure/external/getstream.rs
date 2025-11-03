@@ -33,8 +33,6 @@ impl GetStreamRepository for HttpGetStreamRepository {
         let status = resp.status();
         let body = resp.text().await.map_err(|e| GetStreamRepoError::Unexpected(e.to_string()))?;
         
-        println!("[GetStream] status={} body={}", status, body);
-        
         // Validar status HTTP antes de continuar
         if !status.is_success() {
             return Err(GetStreamRepoError::Unexpected(format!("GetStream API returned status {}: {}", status, body)));
@@ -101,7 +99,6 @@ impl GetStreamRepository for HttpGetStreamRepository {
 
         let status = resp.status();
         let body = resp.text().await.map_err(|e| GetStreamRepoError::Unexpected(e.to_string()))?;
-        println!("[GetStream unread] status={} body={}", status, body);
         if !status.is_success() { return Ok(0); }
 
         // Intentar extraer un contador plausible de la respuesta
