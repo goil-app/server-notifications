@@ -3,7 +3,8 @@ use actix_web::HttpMessage;
 use crate::infrastructure::services::AppServices;
 use crate::response::ApiResponse;
 use crate::types::AuthContext;
-use crate::mappers::{notification::domain_to_response, common::sha512_hash};
+use crate::mappers::{notification::domain_to_response, common::sha512_hash, request_headers::RequestHeaders};
+use crate::application::notification::TrackNotificationParams;
 
 /// Controlador para endpoints de notificaciones
 pub struct NotificationController;
@@ -16,65 +17,29 @@ impl NotificationController {
         id: String,
         business_ids: Vec<String>,
     ) -> impl Responder {
-        // Obtener el language de la sesión desde extensions (inyectado por session_guard)
-        // Si no hay language, usar "es" por defecto
-        let language = req.extensions()
-            .get::<String>()
-            .cloned()
-            .unwrap_or_else(|| "es".to_string());
-        
-        // Obtener business_id y user_id del AuthContext (inyectado por auth_guard)
-        let Some(auth_ctx) = req.extensions().get::<AuthContext>().cloned() else {
-            return HttpResponse::Forbidden()
-                .json(ApiResponse::<()>::error("Missing authentication context"));
+        // Extraer contexto y validar autenticación
+        let (language, auth_ctx, business_id) = match Self::extract_context(&req) {
+            Ok(ctx) => ctx,
+            Err(response) => return response,
         };
-        
-        let business_id = auth_ctx.business_id.clone();
-        if business_id.is_empty() {
-            return HttpResponse::Forbidden()
-                .json(ApiResponse::<()>::error("Missing or invalid business_id"));
-        };
-        
-        // Preparar businessIds: si no hay en query params, usar solo el business_id del token
+
+        // Preparar businessIds para usar en queries
         let business_ids_to_use = if business_ids.is_empty() {
             vec![business_id.clone()]
         } else {
             business_ids.clone()
         };
-        
-        // Preparar futures concurrentes
-        // 1) Usuario (por businessIds de query o por token)
-        let user_future = async {
-            if business_ids.is_empty() {
-                services.user.get_user.execute(&auth_ctx.user_id, &business_id).await
-            } else {
-                services.user.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
-            }
-        };
-        // 2) Notificación (Mongo o GetStream si id es UUID)
-        let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
-        let notification_future = async {
-            if is_uuid {
-                services.notification.get_getstream_message.execute(&id, &auth_ctx.user_id, &language, &business_id).await
-                    .map_err(|e| crate::domain::NotificationRepoError::Unexpected(format!("getstream: {}", e)))
-            } else {
-                services.notification.get_notification.execute(&id, &language, &business_id).await
-            }
-        };
-        // 3) Business
-        let business_future = services.business.get_business.execute(&business_id);
-        // 4) Unread de GetStream
-        let getstream_unread_future = services.notification.get_getstream_unread_count.execute(&auth_ctx.user_id);
 
-        // Ejecutar primera hornada en paralelo
+        // Ejecutar queries en paralelo
+        let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
         let (user_result, notification_result, business_result, getstream_unread_result) = tokio::join!(
-            user_future,
-            notification_future,
-            business_future,
-            getstream_unread_future,
+            Self::fetch_user(&services, &auth_ctx.user_id, &business_id, &business_ids),
+            Self::fetch_notification(&services, &id, is_uuid, &auth_ctx.user_id, &language, &business_id),
+            services.business.get_business.execute(&business_id),
+            services.notification.get_getstream_unread_count.execute(&auth_ctx.user_id),
         );
-        
-        // Procesar resultado de notificación
+
+        // Procesar notificación (obligatoria)
         let notification = match notification_result {
             Ok(n) => n,
             Err(e) => {
@@ -84,188 +49,173 @@ impl NotificationController {
             }
         };
 
-        // Encolar trabajo de tracking si la notificación NO es UUID (es ObjectId)
+        // Encolar tracking si es necesario
         if !is_uuid && crate::mappers::common::is_object_id_or_hex_string(&id) {
-            eprintln!("[NotificationController::get_notification] Attempting to enqueue track notification for id: {}", id);
-            
-            // Extraer headers de la petición HTTP
-            let device_client_os = req.headers()
-                .get("x-client-os")
-                .and_then(|h| h.to_str().ok())
-                .map(String::from)
-                .unwrap_or_default();
-            
-            let device_client_model = req.headers()
-                .get("x-client-device")
-                .and_then(|h| h.to_str().ok())
-                .map(String::from)
-                .unwrap_or_default();
-            
-            let device_client_type = req.headers()
-                .get("x-client-platform")
-                .and_then(|h| h.to_str().ok())
-                .map(String::from)
-                .unwrap_or_default();
-            
-            let account_id = req.headers()
-                .get("x-client-id")
-                .and_then(|h| h.to_str().ok())
-                .map(String::from)
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            
-            let queue_request = serde_json::json!({
-                "name": "TRACK_NOTIFICATION",
-                "params": {
-                    "id": id,
-                    "businessId": business_id,
-                    "accountId": account_id,
-                    "deviceClientType": device_client_type,
-                    "deviceClientModel": device_client_model,
-                    "deviceClientOS": device_client_os,
-                    "sessionId": auth_ctx.session_id.clone().unwrap_or_default()
-                }
-            });
-
-            eprintln!("[NotificationController::get_notification] Queue request to http://localhost:6969/api/v2/queue:");
-            eprintln!("{}", serde_json::to_string_pretty(&queue_request).unwrap_or_default());
-            
-            // Hacer la petición HTTP de forma asíncrona sin bloquear la respuesta
-            let notification_id = id.clone();
-            
-            // Extraer el Bearer token de la petición original
-            let auth_header = req.headers()
-                .get("authorization")
-                .and_then(|h| h.to_str().ok())
-                .map(String::from)
-                .unwrap_or_default();
-            
-            tokio::spawn(async move {
-                let client = reqwest::Client::new();
-                let mut request_builder = client.post("https://community.goil.app/api/v2/queue")
-                    .json(&queue_request)
-                    .header("x-client-platform", "mobile-platform");
-                
-                // Añadir el Bearer token si existe
-                if !auth_header.is_empty() {
-                    request_builder = request_builder.header("authorization", auth_header);
-                }
-                
-                match request_builder.send().await
-                {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            eprintln!("[NotificationController::get_notification] Successfully enqueued track notification for notification {}", notification_id);
-                        } else {
-                            let status = response.status();
-                            let error_text = response.text().await.unwrap_or_default();
-                            eprintln!("[NotificationController::get_notification] Failed to enqueue track notification for notification {}. Status: {}, Error: {}", notification_id, status, error_text);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[NotificationController::get_notification] Error enqueuing track notification for notification {}: {:?}", notification_id, e);
-                    }
-                }
-            });
+            Self::enqueue_tracking(&services, &req, &id, &business_id, &auth_ctx);
         }
 
-        
-        // Procesar resultado de usuario (opcional, continuamos aunque falle)
-        let user = match user_result {
-            Ok(u) => Some(u),
-            Err(e) => {
-                eprintln!("[NotificationController::get_notification] Error fetching user {}: {:?}", auth_ctx.user_id, e);
-                None // Continuamos aunque falle obtener el usuario
-            }
-        };
+        // Procesar resultados opcionales
+        let user = user_result.ok();
+        let business = business_result.ok();
 
-        // Procesar resultado de business (opcional, continuamos aunque falle)
-        let business = match business_result {
-            Ok(b) => Some(b),
-            Err(e) => {
-                eprintln!("[NotificationController::get_notification] Error fetching business {}: {:?}", business_id, e);
-                None // Continuamos aunque falle obtener el business
-            }
-        };
+        // Obtener notificaciones adicionales y reads si tenemos usuario
+        let (all_notifications, notification_reads) = Self::fetch_additional_data(
+            &services,
+            &user,
+            &business_ids_to_use,
+        ).await;
 
-        // Nueva lógica: buscar usuarios con el mismo teléfono y obtener notificaciones de todos
-        // Los usuarios deben pertenecer a los businessIds de la query (o al del token si no hay query params)
-        let (all_notifications, notification_reads) = if let Some(ref user) = user {
-            let phone = &user.phone;
-            // Buscar usuarios que pertenezcan a los businessIds especificados
-            let users_result = services.user.get_users.execute(phone, &business_ids_to_use).await;
-            let users_found = match users_result {
-                Ok(users) => users,
-                Err(e) => {
-                    eprintln!("[NotificationController::get_notification] Error fetching users by phone {}: {:?}", phone, e);
-                    vec![] // Continuar con array vacío si falla
-                }
-            };
+        // Calcular unread count
+        let unread_count = Self::calculate_unread_count(
+            &all_notifications,
+            &notification_reads,
+            getstream_unread_result.unwrap_or(0),
+        );
 
-            // 2. Preparar usuarios con phone hasheado y obtener todas las notificaciones en una sola query
-            let users_with_hashed_phone: Vec<_> = users_found.iter()
-                .map(|u| {
-                    let mut user_with_hashed_phone = u.clone();
-                    user_with_hashed_phone.phone = sha512_hash(&u.phone);
-                    user_with_hashed_phone
-                })
-                .collect();
-
-            // Preparar phone hasheado antes del tokio::join! para evitar problemas de ownership
-            let hashed_phone = sha512_hash(phone);
-
-            // Ejecutar búsqueda de notificaciones para todos los usuarios en paralelo con notification reads
-            let (all_notifications_result, notification_reads_result) = tokio::join!(
-                services.notification.get_users_notifications.execute(&users_with_hashed_phone, &business_ids_to_use),
-                services.analytics.get_notification_reads.execute(&hashed_phone, &business_ids_to_use)
-            );
-            
-            let all_notifications = match all_notifications_result {
-                Ok(notifications) => Some(notifications),
-                Err(e) => {
-                    eprintln!("[NotificationController::get_notification] Error fetching notifications for users: {:?}", e);
-                    None
-                }
-            };
-
-            let notification_reads = match notification_reads_result {
-                Ok(nr) => Some(nr),
-                Err(e) => {
-                    eprintln!("[NotificationController::get_notification] Error fetching notification reads for phone: {:?}", e);
-                    None
-                }
-            };
-            
-            (all_notifications, notification_reads)
-        } else {
-            (None, None)
-        };
-        
-        // 4. Comparar qué notificaciones no tienen ningún read
-        // Nota: Esta lógica se calcula pero no se usa actualmente en la respuesta.
-        // Se mantiene para futuras implementaciones donde se pueda usar isRead.
-        let unread_notification_ids: Vec<String> = {
-            use std::collections::HashSet;
-            let all_notifications: Vec<String> = all_notifications.unwrap_or_default();
-            let reads = notification_reads.unwrap_or_default();
-            let notifications_set: HashSet<&String> = all_notifications.iter().collect();
-            let reads_set: HashSet<&String> = reads.iter().collect();
-            notifications_set
-                .difference(&reads_set)
-                .map(|id| (*id).clone())
-                .collect()
-        };
-        // Obtener businessName del business si existe, sino usar "Goil" por defecto
+        // Construir respuesta
         let business_name = business.map(|b| b.name).unwrap_or_else(|| "Goil".to_string());
-        
-        // Obtener el número de notificaciones pendientes de leer
-        let server_unread_count = unread_notification_ids.len() as i32;
-        
-        // Unread de GetStream ya resuelto en paralelo (si falla, 0)
-        let getstream_unread_count = getstream_unread_result.unwrap_or(0);
-        let unread_count = server_unread_count + getstream_unread_count;
-        
-        let resp = domain_to_response(notification, &services.storage.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;
+        let resp = domain_to_response(
+            notification,
+            &services.storage.s3_signer,
+            Some(business_id.clone()),
+            Some(business_name),
+            unread_count,
+        ).await;
+
         HttpResponse::Ok().json(ApiResponse::ok(resp))
+    }
+
+    // Métodos privados de ayuda
+
+    fn extract_context(req: &HttpRequest) -> Result<(String, AuthContext, String), HttpResponse> {
+        let language = req.extensions()
+            .get::<String>()
+            .cloned()
+            .unwrap_or_else(|| "es".to_string());
+        
+        let Some(auth_ctx) = req.extensions().get::<AuthContext>().cloned() else {
+            return Err(HttpResponse::Forbidden()
+                .json(ApiResponse::<()>::error("Missing authentication context")));
+        };
+        
+        let business_id = auth_ctx.business_id.clone();
+        if business_id.is_empty() {
+            return Err(HttpResponse::Forbidden()
+                .json(ApiResponse::<()>::error("Missing or invalid business_id")));
+        }
+
+        Ok((language, auth_ctx, business_id))
+    }
+
+    async fn fetch_user(
+        services: &AppServices,
+        user_id: &str,
+        business_id: &str,
+        query_business_ids: &[String],
+    ) -> Result<crate::domain::SimplifiedUser, crate::domain::UserRepoError> {
+        if query_business_ids.is_empty() {
+            services.user.get_user.execute(user_id, business_id).await
+        } else {
+            services.user.get_user_by_business_ids.execute(user_id, query_business_ids).await
+        }
+    }
+
+    async fn fetch_notification(
+        services: &AppServices,
+        id: &str,
+        is_uuid: bool,
+        user_id: &str,
+        language: &str,
+        business_id: &str,
+    ) -> Result<crate::domain::Notification, crate::domain::NotificationRepoError> {
+        if is_uuid {
+            services.notification.get_getstream_message.execute(id, user_id, language, business_id).await
+                .map_err(|e| crate::domain::NotificationRepoError::Unexpected(format!("getstream: {}", e)))
+        } else {
+            services.notification.get_notification.execute(id, language, business_id).await
+        }
+    }
+
+    fn enqueue_tracking(
+        services: &AppServices,
+        req: &HttpRequest,
+        notification_id: &str,
+        business_id: &str,
+        auth_ctx: &AuthContext,
+    ) {
+        let headers = RequestHeaders::from_request(req);
+        
+        let params = TrackNotificationParams {
+            id: notification_id.to_string(),
+            business_id: business_id.to_string(),
+            account_id: headers.account_id,
+            device_client_type: headers.device_client_type,
+            device_client_model: headers.device_client_model,
+            device_client_os: headers.device_client_os,
+            session_id: auth_ctx.session_id.clone().unwrap_or_default(),
+        };
+
+        services.notification.enqueue_track_notification.execute_async(params, headers.authorization);
+    }
+
+    async fn fetch_additional_data(
+        services: &AppServices,
+        user: &Option<crate::domain::SimplifiedUser>,
+        business_ids: &[String],
+    ) -> (Option<Vec<String>>, Option<Vec<String>>) {
+        let Some(ref user) = user else {
+            return (None, None);
+        };
+
+        let phone = &user.phone;
+        let users_result = services.user.get_users.execute(phone, business_ids).await;
+        let users_found = match users_result {
+            Ok(users) => users,
+            Err(e) => {
+                eprintln!("[NotificationController::get_notification] Error fetching users by phone {}: {:?}", phone, e);
+                return (None, None);
+            }
+        };
+
+        let users_with_hashed_phone: Vec<_> = users_found.iter()
+            .map(|u| {
+                let mut user_with_hashed_phone = u.clone();
+                user_with_hashed_phone.phone = sha512_hash(&u.phone);
+                user_with_hashed_phone
+            })
+            .collect();
+
+        let hashed_phone = sha512_hash(phone);
+
+        let (all_notifications_result, notification_reads_result) = tokio::join!(
+            services.notification.get_users_notifications.execute(&users_with_hashed_phone, business_ids),
+            services.analytics.get_notification_reads.execute(&hashed_phone, business_ids)
+        );
+
+        (
+            all_notifications_result.ok(),
+            notification_reads_result.ok(),
+        )
+    }
+
+    fn calculate_unread_count(
+        all_notifications: &Option<Vec<String>>,
+        notification_reads: &Option<Vec<String>>,
+        getstream_unread_count: i32,
+    ) -> i32 {
+        use std::collections::HashSet;
+        
+        let all_notifications = all_notifications.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        let reads = notification_reads.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        
+        let notifications_set: HashSet<&String> = all_notifications.iter().collect();
+        let reads_set: HashSet<&String> = reads.iter().collect();
+        
+        let server_unread_count = notifications_set
+            .difference(&reads_set)
+            .count() as i32;
+
+        server_unread_count + getstream_unread_count
     }
 }
 
