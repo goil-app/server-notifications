@@ -13,7 +13,14 @@ pub struct Databases {
 
 impl Databases {
     /// Inicializa el cliente MongoDB y crea las conexiones a las bases de datos necesarias
-    pub async fn init() -> mongodb::error::Result<Self> {
+    /// 
+    /// # Parámetros
+    /// - `max_pool_size`: Número máximo de conexiones en el pool por worker (opcional)
+    /// - `min_pool_size`: Número mínimo de conexiones en el pool (opcional)
+    pub async fn init_with_pool_config(
+        max_pool_size: Option<u32>,
+        min_pool_size: Option<u32>,
+    ) -> mongodb::error::Result<Self> {
         let uri = std::env::var("MONGODB_URI").unwrap_or_else(|_| "mongodb://localhost:27017".to_string());
         let notifications_db_name = std::env::var("MONGODB_NOTIFICATIONS_DB")
             .unwrap_or_else(|_| "NotificationDB".to_string());
@@ -27,16 +34,18 @@ impl Databases {
         let parsed = ClientOptions::parse(&uri).await?;
         let mut opts = parsed;
         opts.app_name = Some("server-notifications".to_string());
-        opts.server_selection_timeout = Some(Duration::from_secs(3));
-        opts.connect_timeout = Some(Duration::from_secs(3));
-        // Pool optimizado para 4 vCPU y 8GB RAM:
-        // - Con 4 workers: total = 4 × 50 = 200 conexiones (dentro de límites razonables)
-        // - Para 2000+ req/s: ~500 req/s por worker, pool de 50 es adecuado
-        // - min_pool_size aumentado para mantener conexiones calientes y reducir latencia
-        // - max_idle_time moderado para balance entre rendimiento y uso de recursos
-        opts.max_pool_size = Some(50); // Aumentado para aprovechar más recursos (4vCPU, 8GB RAM)
-        opts.min_pool_size = Some(10); // Aumentado para mantener más conexiones calientes
-        opts.max_idle_time = Some(Duration::from_secs(30)); // Tiempo moderado para liberar recursos
+        // Timeouts optimizados para alto rendimiento y estabilidad
+        opts.server_selection_timeout = Some(Duration::from_secs(5)); // Tiempo suficiente para seleccionar servidor
+        opts.connect_timeout = Some(Duration::from_secs(5)); // Tiempo suficiente para conectar
+        
+        // Configurar pool size dinámicamente o usar valores por defecto
+        opts.max_pool_size = max_pool_size.or(Some(200)); // Por defecto: 200 conexiones por worker (alto rendimiento)
+        opts.min_pool_size = min_pool_size.or(Some(50)); // Por defecto: 50 conexiones mínimas (mantener calientes)
+        opts.max_idle_time = Some(Duration::from_secs(120)); // Más tiempo idle para evitar recrear conexiones
+        opts.max_connecting = Some((max_pool_size.unwrap_or(200) / 4).max(20)); // Limitar conexiones simultáneas en establecimiento
+        
+        // Heartbeat para mantener conexiones vivas y evitar timeouts
+        opts.heartbeat_freq = Some(Duration::from_secs(10)); // Heartbeat cada 10 segundos para mantener conexiones activas
         opts.server_api = Some(ServerApi::builder().version(ServerApiVersion::V1).build());
 
         let client = Client::with_options(opts)?;
@@ -47,6 +56,12 @@ impl Databases {
             analytics_db: client.database(&analytics_db_name),
             client_db: client.database(&client_db_name),
         })
+    }
+
+    /// Inicializa el cliente MongoDB con configuración por defecto
+    /// Para configuración personalizada, usar `init_with_pool_config`
+    pub async fn init() -> mongodb::error::Result<Self> {
+        Self::init_with_pool_config(None, None).await
     }
 }
 

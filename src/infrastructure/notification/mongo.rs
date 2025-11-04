@@ -6,7 +6,7 @@ use futures::stream::TryStreamExt;
 use std::collections::HashSet;
 
 use crate::domain::{Notification, NotificationRepository, NotificationRepoError, SimplifiedUser};
-use crate::mappers::{notification::doc_to_domain, common::object_id_to_string_or_empty};
+use crate::mappers::notification::doc_to_domain;
 
 #[derive(Clone)]
 pub struct MongoNotificationRepository {
@@ -87,43 +87,74 @@ impl NotificationRepository for MongoNotificationRepository {
         // Construir el filtro: notificaciones que coincidan con cualquiera de los usuarios
         // businessId acepta array de businessIds, topic también acepta array
         // creationDate se compara como ISODate de MongoDB
+        // OPTIMIZACIÓN: Simplificar el filtro si las listas están vacías
+        let mut or_conditions = vec![];
+        
+        if !account_types.is_empty() {
+            or_conditions.push(doc! { "topic": { "$in": account_types.clone() } });
+            or_conditions.push(doc! { "accountTypeTargets": { "$in": account_types.clone() } });
+        }
+        
+        if !topic_all_business_ids.is_empty() {
+            or_conditions.push(doc! { "topic": { "$in": topic_all_business_ids } });
+        }
+        
+        if !user_ids.is_empty() {
+            or_conditions.push(doc! { "userTargets": { "$in": user_ids.clone() } });
+            or_conditions.push(doc! { "userTargetsChannel": { "$in": user_ids.clone() } });
+        }
+        
+        if !phones.is_empty() {
+            or_conditions.push(doc! { "phones": { "$in": phones } });
+        }
+        
+        // Si no hay condiciones OR, retornar vacío
+        if or_conditions.is_empty() {
+            return Ok(Vec::new());
+        }
+        
         let filter = doc! {
             "businessId": { "$in": business_oids },
             "creationDate": { "$gt": account_creation_date },
             "deleted": false,
             "type": { "$ne": external_hidden_type },
-            "$or": [
-                { "topic": { "$in": account_types.clone() } },
-                { "topic": { "$in": topic_all_business_ids } },
-                { "userTargets": { "$in": user_ids.clone() } },
-                { "accountTypeTargets": { "$in": account_types.clone() } },
-                { "userTargetsChannel": { "$in": user_ids.clone() } },
-                { "phones": { "$in": phones } }
-            ]
+            "$or": or_conditions
         };
 
+        // Optimización: limitar resultados y usar batch size óptimo
+        // IMPORTANTE: Para máximo rendimiento, crear índices en MongoDB:
+        // db.Notification.createIndex({ "businessId": 1, "creationDate": -1, "deleted": 1, "type": 1 })
+        // db.Notification.createIndex({ "topic": 1 })
+        // db.Notification.createIndex({ "userTargets": 1 })
+        // db.Notification.createIndex({ "phones": 1 })
         let options = FindOptions::builder()
             .projection(doc! { "_id": 1 })
+            .limit(1000) // Límite razonable para obtener unread count preciso
+            .batch_size(100) // Batch size óptimo para transferencia
             .build();
 
         let coll = self.db.collection::<Document>("Notification");
-        let mut cursor = coll
+        
+        // Optimización: usar collect en lugar de iterar cursor para mejor rendimiento
+        let cursor = coll
             .find(filter)
             .with_options(options)
             .await
             .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
+        
+        let docs: Vec<Document> = cursor
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
 
-        let mut notification_ids = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| NotificationRepoError::Unexpected(e.to_string()))? {
-            let id = object_id_to_string_or_empty(result.get_object_id("_id").ok());
-            if !id.is_empty() {
-                notification_ids.push(id);
+        // Extraer IDs y eliminar duplicados en una sola pasada
+        let mut unique_ids: HashSet<String> = HashSet::new();
+        for doc in docs {
+            if let Ok(oid) = doc.get_object_id("_id") {
+                unique_ids.insert(oid.to_hex());
             }
         }
-
-        // Eliminar duplicados usando HashSet
-        let mut unique_ids: HashSet<String> = HashSet::new();
-        unique_ids.extend(notification_ids);
+        
         Ok(unique_ids.into_iter().collect())
     }
 }

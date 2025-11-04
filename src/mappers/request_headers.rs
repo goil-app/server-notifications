@@ -6,7 +6,6 @@ pub struct RequestHeaders {
     pub device_client_os: String,
     pub device_client_model: String,
     pub device_client_type: String,
-    pub account_id: String,
     pub authorization: Option<String>,
 }
 
@@ -30,12 +29,6 @@ impl RequestHeaders {
             .map(String::from)
             .unwrap_or_default();
         
-        let account_id = req.headers()
-            .get("x-client-id")
-            .and_then(|h| h.to_str().ok())
-            .map(String::from)
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        
         let authorization = req.headers()
             .get("authorization")
             .and_then(|h| h.to_str().ok())
@@ -45,7 +38,6 @@ impl RequestHeaders {
             device_client_os,
             device_client_model,
             device_client_type,
-            account_id,
             authorization,
         }
     }

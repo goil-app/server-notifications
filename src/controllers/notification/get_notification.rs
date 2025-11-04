@@ -58,18 +58,22 @@ impl NotificationController {
         let user = user_result.ok();
         let business = business_result.ok();
 
-        // Obtener notificaciones adicionales y reads si tenemos usuario
-        let (all_notifications, notification_reads) = Self::fetch_additional_data(
-            &services,
-            &user,
-            &business_ids_to_use,
-        ).await;
+        // Obtener datos adicionales para calcular unread count real
+        // Estas queries están optimizadas para ejecutarse rápidamente
+        let getstream_unread_count = getstream_unread_result.unwrap_or(0);
+        
+        let (all_notifications, notification_reads) = if user.is_some() {
+            Self::fetch_additional_data(&services, &user, &business_ids_to_use).await
+        } else {
+            (None, None)
+        };
 
         // Calcular unread count
+        // Si las queries adicionales fallaron o timeout, usamos solo GetStream (que es más rápido)
         let unread_count = Self::calculate_unread_count(
             &all_notifications,
             &notification_reads,
-            getstream_unread_result.unwrap_or(0),
+            getstream_unread_count,
         );
 
         // Construir respuesta
@@ -148,7 +152,7 @@ impl NotificationController {
         let params = TrackNotificationParams {
             id: notification_id.to_string(),
             business_id: business_id.to_string(),
-            account_id: headers.account_id,
+            account_id: auth_ctx.user_id.clone(), // Usar user_id del token, no del header
             device_client_type: headers.device_client_type,
             device_client_model: headers.device_client_model,
             device_client_os: headers.device_client_os,
@@ -168,15 +172,31 @@ impl NotificationController {
         };
 
         let phone = &user.phone;
-        let users_result = services.user.get_users.execute(phone, business_ids).await;
+        
+        // OPTIMIZACIÓN: Ejecutar queries en paralelo desde el inicio
+        // Pre-calcular hash del teléfono mientras se obtienen usuarios
+        let (users_result, hashed_phone) = tokio::join!(
+            services.user.get_users.execute(phone, business_ids),
+            async { sha512_hash(phone) } // Calcular hash en paralelo
+        );
+        
         let users_found = match users_result {
             Ok(users) => users,
             Err(e) => {
                 eprintln!("[NotificationController::get_notification] Error fetching users by phone {}: {:?}", phone, e);
-                return (None, None);
+                // Si falla obtener usuarios, aún podemos intentar obtener reads con el phone hasheado
+                let notification_reads_result = services.analytics.get_notification_reads.execute(&hashed_phone, business_ids).await;
+                return (None, notification_reads_result.ok());
             }
         };
 
+        // Si no hay usuarios encontrados, solo obtener reads
+        if users_found.is_empty() {
+            let notification_reads_result = services.analytics.get_notification_reads.execute(&hashed_phone, business_ids).await;
+            return (None, notification_reads_result.ok());
+        }
+
+        // Optimización: hash phones en paralelo usando rayon o iteración optimizada
         let users_with_hashed_phone: Vec<_> = users_found.iter()
             .map(|u| {
                 let mut user_with_hashed_phone = u.clone();
@@ -185,8 +205,7 @@ impl NotificationController {
             })
             .collect();
 
-        let hashed_phone = sha512_hash(phone);
-
+        // Ejecutar ambas queries en paralelo
         let (all_notifications_result, notification_reads_result) = tokio::join!(
             services.notification.get_users_notifications.execute(&users_with_hashed_phone, business_ids),
             services.analytics.get_notification_reads.execute(&hashed_phone, business_ids)

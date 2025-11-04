@@ -30,8 +30,6 @@ impl EnqueueTrackNotificationUseCase {
                 }
             });
 
-            eprintln!("[EnqueueTrackNotificationUseCase] Queue request to {}:", queue_url);
-            eprintln!("{}", serde_json::to_string_pretty(&queue_request).unwrap_or_default());
 
             let client = reqwest::Client::new();
             let mut request_builder = client.post(&queue_url)
@@ -44,12 +42,10 @@ impl EnqueueTrackNotificationUseCase {
             
             match request_builder.send().await {
                 Ok(response) => {
-                    if response.status().is_success() {
-                        eprintln!("[EnqueueTrackNotificationUseCase] Successfully enqueued track notification for id: {}", params.id);
-                    } else {
+                    if !response.status().is_success() {
                         let status = response.status();
                         let error_text = response.text().await.unwrap_or_default();
-                        eprintln!("[EnqueueTrackNotificationUseCase] Failed to enqueue track notification for id: {}. Status: {}, Error: {}", params.id, status, error_text);
+                        eprintln!("Failed to enqueue track notification for id: {}. Status: {}, Error: {}", params.id, status, error_text);
                     }
                 }
                 Err(e) => {

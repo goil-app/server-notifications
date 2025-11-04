@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use mongodb::Database;
 use mongodb::bson::{doc, oid::ObjectId, Document};
 use mongodb::options::FindOptions;
-use futures::stream::TryStreamExt;
+use futures::stream::TryStreamExt; // Necesario para try_collect()
 
 use crate::domain::analytics::{NotificationReadRepository, NotificationReadRepoError};
 use crate::mappers::common::object_id_to_string_or_empty;
@@ -32,22 +32,30 @@ impl NotificationReadRepository for MongoNotificationReadRepository {
             "businessId": { "$in": business_oids }
         };
 
+        // IMPORTANTE: Para máximo rendimiento, crear índice en MongoDB:
+        // db.NotificationRead.createIndex({ "phone": 1, "businessId": 1 })
         let options = FindOptions::builder()
             .projection(doc! { "notificationId": 1 })
+            .limit(1000) // Límite razonable para obtener reads precisos
+            .batch_size(100) // Batch size óptimo
             .build();
 
         let coll = self.db.collection::<Document>("NotificationRead");
-        let mut cursor = coll
+        
+        // Optimización: usar collect en lugar de iterar cursor para mejor rendimiento
+        let cursor = coll
             .find(filter)
             .with_options(options)
             .await
             .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
         
-        let mut notification_ids = Vec::new();
-        while let Some(result) = cursor
-            .try_next()
+        let docs: Vec<Document> = cursor
+            .try_collect::<Vec<_>>()
             .await
-            .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))? {
+            .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
+        
+        let mut notification_ids = Vec::new();
+        for result in docs {
                 let id = object_id_to_string_or_empty(result.get_object_id("notificationId").ok());
                 if !id.is_empty() {
                     notification_ids.push(id);

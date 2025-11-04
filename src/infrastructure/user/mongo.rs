@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use mongodb::Database;
 use mongodb::bson::{doc, oid::ObjectId, Document};
 use mongodb::options::{FindOneOptions, FindOptions};
-use futures::stream::TryStreamExt;
+use futures::stream::TryStreamExt; // Necesario para try_collect()
 use crate::domain::{SimplifiedUser, UserRepository, UserRepoError};
 use crate::mappers::user::doc_to_simplified;
 
@@ -75,29 +75,37 @@ impl UserRepository for MongoUserRepository {
             "businessId": { "$in": business_oids }
         };
 
+        // IMPORTANTE: Para máximo rendimiento, crear índice en MongoDB:
+        // db.Account.createIndex({ "phone": 1, "businessId": 1 })
         let options = FindOptions::builder()
             .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1 })
+            .limit(20) // Límite razonable (normalmente hay pocos usuarios con el mismo teléfono)
+            .batch_size(20)
             .build();
 
         let coll = self.db.collection::<Document>("Account");
-        let mut cursor = coll
+        
+        // Optimización: usar collect en lugar de iterar cursor para mejor rendimiento
+        let cursor = coll
             .find(filter)
             .with_options(options)
             .await
             .map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
         
-        let mut users = Vec::new();
-        while let Some(result) = cursor
-            .try_next()
+        let docs: Vec<Document> = cursor
+            .try_collect::<Vec<_>>()
             .await
-            .map_err(|e| UserRepoError::Unexpected(e.to_string()))? {
-                match doc_to_simplified(result) {
-                    Ok(user) => users.push(user),
-                    Err(e) => {
-                        eprintln!("[MongoUserRepository::find_by_phone_and_business_ids] Error mapping document: {:?}", e);
-                        // Continuamos con el siguiente documento en lugar de fallar
-                    }
+            .map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
+        
+        let mut users = Vec::new();
+        for result in docs {
+            match doc_to_simplified(result) {
+                Ok(user) => users.push(user),
+                Err(e) => {
+                    eprintln!("[MongoUserRepository::find_by_phone_and_business_ids] Error mapping document: {:?}", e);
+                    // Continuamos con el siguiente documento en lugar de fallar
                 }
+            }
         }
 
         Ok(users)
