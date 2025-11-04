@@ -29,22 +29,22 @@ async fn main() -> std::io::Result<()> {
             std::io::Error::new(std::io::ErrorKind::Other, format!("services init error: {}", e))
         })?;
 
-    // Configurar workers: Para 2 vCPU y 4GB RAM, optimizamos recursos
+    // Configurar workers: Para 4 vCPU y 8GB RAM, optimizamos recursos
     // Cada worker tiene su propio pool de MongoDB, así que el pool total = workers × max_pool_size
-    // Con recursos limitados, usar 2 workers (uno por vCPU) es ideal
+    // Con 4 vCPUs, usar 4 workers (uno por vCPU) aprovecha mejor el paralelismo
     let num_workers = std::env::var("ACTIX_WORKERS")
         .ok()
         .and_then(|w| w.parse::<usize>().ok())
         .unwrap_or_else(|| {
-            // Para 2 vCPU: usar 2 workers es óptimo
-            // Más workers consumen más memoria y conexiones
+            // Para 4 vCPU: usar 4 workers es óptimo
+            // Con más RAM disponible, podemos mantener más conexiones
             std::thread::available_parallelism()
-                .map(|n| n.get().min(2)) // Máximo 2 workers para recursos limitados
-                .unwrap_or(2)
+                .map(|n| n.get().min(4)) // Máximo 4 workers para aprovechar los 4 vCPUs
+                .unwrap_or(4)
         });
     
-    println!("[main] Starting server with {} workers (machine: 2vCPU, 4GB RAM)", num_workers);
-    println!("[main] MongoDB pool: {} connections per worker (total: {} connections)", 30, num_workers * 30);
+    println!("[main] Starting server with {} workers (machine: 4vCPU, 8GB RAM)", num_workers);
+    println!("[main] MongoDB pool: {} connections per worker (total: {} connections)", 50, num_workers * 50);
     
     let port =  std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap_or(8080);
     HttpServer::new(move || App::new()
@@ -54,10 +54,10 @@ async fn main() -> std::io::Result<()> {
         .service(routes::notification::router()))
         .bind(("0.0.0.0", port))?
         .workers(num_workers)
-        // Optimizaciones para recursos limitados (4GB RAM)
-        .client_request_timeout(Duration::from_millis(5000)) // Timeout de cliente: 5 segundos
-        .client_disconnect_timeout(Duration::from_millis(1000)) // Desconectar clientes inactivos rápidamente
-        .keep_alive(Duration::from_secs(30)) // Keep-alive más corto para liberar conexiones
+        // Optimizaciones para recursos mejorados (8GB RAM)
+        .client_request_timeout(Duration::from_millis(10000)) // Timeout de cliente: 10 segundos (más tiempo para operaciones complejas)
+        .client_disconnect_timeout(Duration::from_millis(2000)) // Desconectar clientes inactivos (más tiempo con más recursos)
+        .keep_alive(Duration::from_secs(60)) // Keep-alive más largo para aprovechar conexiones persistentes
         .run()
         .await
 }

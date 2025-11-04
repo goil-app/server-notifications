@@ -29,14 +29,14 @@ impl Databases {
         opts.app_name = Some("server-notifications".to_string());
         opts.server_selection_timeout = Some(Duration::from_secs(3));
         opts.connect_timeout = Some(Duration::from_secs(3));
-        // Pool optimizado para 2 vCPU y 4GB RAM:
-        // - Con 2 workers: total = 2 × 30 = 60 conexiones (dentro de límites razonables)
-        // - Para 1000 req/s: ~500 req/s por worker, pool de 30 es más que suficiente
-        // - min_pool_size pequeño para ahorrar memoria
-        // - max_idle_time corto para liberar recursos rápidamente
-        opts.max_pool_size = Some(30); // Reducido para recursos limitados (2vCPU, 4GB RAM)
-        opts.min_pool_size = Some(3);  // Mínimo para mantener latencia baja
-        opts.max_idle_time = Some(Duration::from_secs(20)); // Cerrar conexiones inactivas más rápido
+        // Pool optimizado para 4 vCPU y 8GB RAM:
+        // - Con 4 workers: total = 4 × 50 = 200 conexiones (dentro de límites razonables)
+        // - Para 2000+ req/s: ~500 req/s por worker, pool de 50 es adecuado
+        // - min_pool_size aumentado para mantener conexiones calientes y reducir latencia
+        // - max_idle_time moderado para balance entre rendimiento y uso de recursos
+        opts.max_pool_size = Some(50); // Aumentado para aprovechar más recursos (4vCPU, 8GB RAM)
+        opts.min_pool_size = Some(10); // Aumentado para mantener más conexiones calientes
+        opts.max_idle_time = Some(Duration::from_secs(30)); // Tiempo moderado para liberar recursos
         opts.server_api = Some(ServerApi::builder().version(ServerApiVersion::V1).build());
 
         let client = Client::with_options(opts)?;
