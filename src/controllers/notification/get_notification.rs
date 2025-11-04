@@ -88,27 +88,78 @@ impl NotificationController {
         if !is_uuid && crate::mappers::common::is_object_id_or_hex_string(&id) {
             eprintln!("[NotificationController::get_notification] Attempting to enqueue track notification for id: {}", id);
             
-            let track_notification_data = serde_json::json!({
-                "id": id,
-                "deviceClientModel": uuid::Uuid::new_v4().to_string(),
-                "deviceClientOS": uuid::Uuid::new_v4().to_string(),
-                "deviceClientType": uuid::Uuid::new_v4().to_string(),
-                "sessionId": auth_ctx.session_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-                "accountId": uuid::Uuid::new_v4().to_string(),
-                "businessId": business_id
+            // Extraer headers de la petición HTTP
+            let device_client_os = req.headers()
+                .get("x-client-os")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from)
+                .unwrap_or_default();
+            
+            let device_client_model = req.headers()
+                .get("x-client-device")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from)
+                .unwrap_or_default();
+            
+            let device_client_type = req.headers()
+                .get("x-client-platform")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from)
+                .unwrap_or_default();
+            
+            let account_id = req.headers()
+                .get("x-client-id")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from)
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            
+            let queue_request = serde_json::json!({
+                "name": "TRACK_NOTIFICATION",
+                "params": {
+                    "id": id,
+                    "businessId": business_id,
+                    "accountId": account_id,
+                    "deviceClientType": device_client_type,
+                    "deviceClientModel": device_client_model,
+                    "deviceClientOS": device_client_os,
+                    "sessionId": auth_ctx.session_id.clone().unwrap_or_default()
+                }
             });
 
-            // Encolar de forma asíncrona sin bloquear la respuesta
-            let queue_service = services.queue_track_notification.add_job.clone();
+            eprintln!("[NotificationController::get_notification] Queue request to http://localhost:6969/api/v2/queue:");
+            eprintln!("{}", serde_json::to_string_pretty(&queue_request).unwrap_or_default());
+            
+            // Hacer la petición HTTP de forma asíncrona sin bloquear la respuesta
             let notification_id = id.clone();
+            
+            // Extraer el Bearer token de la petición original
+            let auth_header = req.headers()
+                .get("authorization")
+                .and_then(|h| h.to_str().ok())
+                .map(String::from)
+                .unwrap_or_default();
+            
             tokio::spawn(async move {
-                match queue_service.execute(
-                    "QUEUE_TRACK_NOTIFICATION",
-                    track_notification_data.clone(),
-                    None,
-                ).await {
-                    Ok(job) => {
-                        eprintln!("[NotificationController::get_notification] Successfully enqueued track notification. Job ID: {}, Notification ID: {}", job.id, notification_id);
+                let client = reqwest::Client::new();
+                let mut request_builder = client.post("https://community.goil.app/api/v2/queue")
+                    .json(&queue_request)
+                    .header("x-client-platform", "mobile-platform");
+                
+                // Añadir el Bearer token si existe
+                if !auth_header.is_empty() {
+                    request_builder = request_builder.header("authorization", auth_header);
+                }
+                
+                match request_builder.send().await
+                {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            eprintln!("[NotificationController::get_notification] Successfully enqueued track notification for notification {}", notification_id);
+                        } else {
+                            let status = response.status();
+                            let error_text = response.text().await.unwrap_or_default();
+                            eprintln!("[NotificationController::get_notification] Failed to enqueue track notification for notification {}. Status: {}, Error: {}", notification_id, status, error_text);
+                        }
                     }
                     Err(e) => {
                         eprintln!("[NotificationController::get_notification] Error enqueuing track notification for notification {}: {:?}", notification_id, e);
