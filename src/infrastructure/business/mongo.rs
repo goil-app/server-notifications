@@ -28,7 +28,8 @@ impl BusinessRepository for MongoBusinessRepository {
         
         let coll = self.db.collection::<Document>("Business");
         let doc = match coll
-            .find_one(doc! { "_id": oid }, options)
+            .find_one(doc! { "_id": oid })
+            .with_options(options)
             .await
             .map_err(|e| BusinessRepoError::Unexpected(e.to_string()))? {
             Some(d) => d,

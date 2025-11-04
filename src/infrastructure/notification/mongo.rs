@@ -29,7 +29,7 @@ impl NotificationRepository for MongoNotificationRepository {
         };
         let coll = self.db.collection::<Document>("Notification");
         let doc = match coll
-            .find_one(filter, None)
+            .find_one(filter)
             .await
             .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))? {
             Some(d) => d,
@@ -108,7 +108,8 @@ impl NotificationRepository for MongoNotificationRepository {
 
         let coll = self.db.collection::<Document>("Notification");
         let mut cursor = coll
-            .find(filter, options)
+            .find(filter)
+            .with_options(options)
             .await
             .map_err(|e| NotificationRepoError::Unexpected(e.to_string()))?;
 

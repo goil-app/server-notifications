@@ -27,7 +27,9 @@ impl SessionRepository for MongoSessionRepository {
         let find_options = mongodb::options::FindOneOptions::builder()
             .projection(projection)
             .build();
-        let doc = match coll.find_one(filter, find_options).await.map_err(|e| SessionRepoError::Unexpected(e.to_string()))? {
+        let doc = match coll.find_one(filter)
+            .with_options(find_options)
+            .await.map_err(|e| SessionRepoError::Unexpected(e.to_string()))? {
             Some(d) => d,
             None => return Err(SessionRepoError::NotFound),
         };

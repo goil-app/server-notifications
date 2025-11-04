@@ -24,7 +24,8 @@ impl Databases {
         let client_db_name = std::env::var("MONGODB_CLIENT_DB")
             .unwrap_or_else(|_| "ClientDB".to_string());
         
-        let mut opts = ClientOptions::parse(&uri).await?;
+        let parsed = ClientOptions::parse(&uri).await?;
+        let mut opts = parsed;
         opts.app_name = Some("server-notifications".to_string());
         opts.server_selection_timeout = Some(Duration::from_secs(3));
         opts.connect_timeout = Some(Duration::from_secs(3));

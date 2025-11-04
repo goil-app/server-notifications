@@ -38,7 +38,8 @@ impl NotificationReadRepository for MongoNotificationReadRepository {
 
         let coll = self.db.collection::<Document>("NotificationRead");
         let mut cursor = coll
-            .find(filter, options)
+            .find(filter)
+            .with_options(options)
             .await
             .map_err(|e| NotificationReadRepoError::Unexpected(e.to_string()))?;
         

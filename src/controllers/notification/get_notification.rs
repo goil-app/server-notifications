@@ -46,25 +46,25 @@ impl NotificationController {
         // 1) Usuario (por businessIds de query o por token)
         let user_future = async {
             if business_ids.is_empty() {
-                services.get_user.execute(&auth_ctx.user_id, &business_id).await
+                services.user.get_user.execute(&auth_ctx.user_id, &business_id).await
             } else {
-                services.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
+                services.user.get_user_by_business_ids.execute(&auth_ctx.user_id, &business_ids_to_use).await
             }
         };
         // 2) Notificación (Mongo o GetStream si id es UUID)
         let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
         let notification_future = async {
             if is_uuid {
-                services.get_getstream_message.execute(&id, &auth_ctx.user_id, &language, &business_id).await
+                services.notification.get_getstream_message.execute(&id, &auth_ctx.user_id, &language, &business_id).await
                     .map_err(|e| crate::domain::NotificationRepoError::Unexpected(format!("getstream: {}", e)))
             } else {
-                services.get_notification.execute(&id, &language, &business_id).await
+                services.notification.get_notification.execute(&id, &language, &business_id).await
             }
         };
         // 3) Business
-        let business_future = services.get_business.execute(&business_id);
+        let business_future = services.business.get_business.execute(&business_id);
         // 4) Unread de GetStream
-        let getstream_unread_future = services.get_getstream_unread_count.execute(&auth_ctx.user_id);
+        let getstream_unread_future = services.notification.get_getstream_unread_count.execute(&auth_ctx.user_id);
 
         // Ejecutar primera hornada en paralelo
         let (user_result, notification_result, business_result, getstream_unread_result) = tokio::join!(
@@ -83,6 +83,7 @@ impl NotificationController {
                     .json(ApiResponse::<()>::error("Notification not found"));
             }
         };
+
         
         // Procesar resultado de usuario (opcional, continuamos aunque falle)
         let user = match user_result {
@@ -107,7 +108,7 @@ impl NotificationController {
         let (all_notifications, notification_reads) = if let Some(ref user) = user {
             let phone = &user.phone;
             // Buscar usuarios que pertenezcan a los businessIds especificados
-            let users_result = services.get_users.execute(phone, &business_ids_to_use).await;
+            let users_result = services.user.get_users.execute(phone, &business_ids_to_use).await;
             let users_found = match users_result {
                 Ok(users) => users,
                 Err(e) => {
@@ -130,8 +131,8 @@ impl NotificationController {
 
             // Ejecutar búsqueda de notificaciones para todos los usuarios en paralelo con notification reads
             let (all_notifications_result, notification_reads_result) = tokio::join!(
-                services.get_users_notifications.execute(&users_with_hashed_phone, &business_ids_to_use),
-                services.get_notification_reads.execute(&hashed_phone, &business_ids_to_use)
+                services.notification.get_users_notifications.execute(&users_with_hashed_phone, &business_ids_to_use),
+                services.analytics.get_notification_reads.execute(&hashed_phone, &business_ids_to_use)
             );
             
             let all_notifications = match all_notifications_result {
@@ -179,7 +180,7 @@ impl NotificationController {
         let getstream_unread_count = getstream_unread_result.unwrap_or(0);
         let unread_count = server_unread_count + getstream_unread_count;
         
-        let resp = domain_to_response(notification, &services.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;
+        let resp = domain_to_response(notification, &services.storage.s3_signer, Some(business_id.clone()), Some(business_name), unread_count).await;
         HttpResponse::Ok().json(ApiResponse::ok(resp))
     }
 }

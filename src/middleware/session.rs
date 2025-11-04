@@ -57,7 +57,7 @@ pub async fn session_guard(
     }
     
     // Consultar la sesión en MongoDB usando el use case (filtra por sessionId y businessId)
-    match services.get_session.execute(&session_id, &business_id).await {
+    match services.session.get_session.execute(&session_id, &business_id).await {
         Ok(session) => {
             // Guardar el language de la sesión en extensions para que los handlers lo usen
             req.extensions_mut().insert(session.language);

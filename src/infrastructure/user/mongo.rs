@@ -25,7 +25,8 @@ impl UserRepository for MongoUserRepository {
             .build();
         let coll = self.db.collection::<Document>("Account");
         let doc = match coll
-            .find_one(doc! { "_id": oid, "businessId": bid }, options)
+            .find_one(doc! { "_id": oid, "businessId": bid })
+            .with_options(options)
             .await
             .map_err(|e| UserRepoError::Unexpected(e.to_string()))? {
             Some(d) => d,
@@ -50,7 +51,8 @@ impl UserRepository for MongoUserRepository {
         
         let coll = self.db.collection::<Document>("Account");
         let doc = match coll
-            .find_one(doc! { "_id": oid, "businessId": { "$in": business_oids } }, options)
+            .find_one(doc! { "_id": oid, "businessId": { "$in": business_oids } })
+            .with_options(options)
             .await
             .map_err(|e| UserRepoError::Unexpected(e.to_string()))? {
             Some(d) => d,
@@ -79,7 +81,8 @@ impl UserRepository for MongoUserRepository {
 
         let coll = self.db.collection::<Document>("Account");
         let mut cursor = coll
-            .find(filter, options)
+            .find(filter)
+            .with_options(options)
             .await
             .map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
         
