@@ -6,7 +6,7 @@ mod middleware;
 mod types;
 mod domain;
 mod application;
-mod infrastructure { pub mod notification; pub mod session; pub mod user; pub mod analytics; pub mod business; pub mod external; pub mod db; pub mod services; pub mod s3; pub mod providers; }
+mod infrastructure { pub mod notification; pub mod session; pub mod user; pub mod analytics; pub mod business; pub mod external; pub mod db; pub mod services; pub mod s3; pub mod providers; pub mod redis; }
 mod response;
 mod mappers;
 mod controllers;

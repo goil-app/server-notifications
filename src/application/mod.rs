@@ -3,6 +3,7 @@ pub mod session;
 pub mod user;
 pub mod analytics;
 pub mod business;
+pub mod redis;
 
 pub use notification::{GetNotificationUseCase, GetUsersNotificationsUseCase, GetGetStreamMessageUseCase, GetGetStreamUnreadCountUseCase};
 pub use session::GetSessionUseCase;

@@ -5,6 +5,7 @@ use crate::infrastructure::providers::{
     BusinessServiceProvider,
     AnalyticsServiceProvider,
     StorageServiceProvider,
+    RedisServiceProvider,
 };
 use crate::infrastructure::db::Databases;
 
@@ -18,17 +19,23 @@ pub struct AppServices {
     pub business: BusinessServiceProvider,
     pub analytics: AnalyticsServiceProvider,
     pub storage: StorageServiceProvider,
+    pub redis: RedisServiceProvider,
 }
 
 impl AppServices {
     /// Crea todos los servicios a partir de las bases de datos usando service providers
     pub async fn new(databases: &Databases) -> Result<Self, String> {
+        eprintln!("[AppServices] Initializing all service providers...");
+        
         let notification_provider = NotificationServiceProvider::new(databases);
         let user_provider = UserServiceProvider::new(databases);
         let session_provider = SessionServiceProvider::new(databases);
         let business_provider = BusinessServiceProvider::new(databases);
         let analytics_provider = AnalyticsServiceProvider::new(databases);
         let storage_provider = StorageServiceProvider::new().await?;
+        let redis_provider = RedisServiceProvider::new().await?;
+
+        eprintln!("[AppServices] All service providers initialized successfully");
 
         Ok(Self {
             notification: notification_provider,
@@ -37,6 +44,7 @@ impl AppServices {
             business: business_provider,
             analytics: analytics_provider,
             storage: storage_provider,
+            redis: redis_provider,
         })
     }
 }
