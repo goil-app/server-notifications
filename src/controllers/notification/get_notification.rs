@@ -84,6 +84,39 @@ impl NotificationController {
             }
         };
 
+        // Encolar trabajo de tracking si la notificación NO es UUID (es ObjectId)
+        if !is_uuid && crate::mappers::common::is_object_id_or_hex_string(&id) {
+            eprintln!("[NotificationController::get_notification] Attempting to enqueue track notification for id: {}", id);
+            
+            let track_notification_data = serde_json::json!({
+                "id": id,
+                "deviceClientModel": uuid::Uuid::new_v4().to_string(),
+                "deviceClientOS": uuid::Uuid::new_v4().to_string(),
+                "deviceClientType": uuid::Uuid::new_v4().to_string(),
+                "sessionId": auth_ctx.session_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                "accountId": uuid::Uuid::new_v4().to_string(),
+                "businessId": business_id
+            });
+
+            // Encolar de forma asíncrona sin bloquear la respuesta
+            let queue_service = services.queue_track_notification.add_job.clone();
+            let notification_id = id.clone();
+            tokio::spawn(async move {
+                match queue_service.execute(
+                    "QUEUE_TRACK_NOTIFICATION",
+                    track_notification_data.clone(),
+                    None,
+                ).await {
+                    Ok(job) => {
+                        eprintln!("[NotificationController::get_notification] Successfully enqueued track notification. Job ID: {}, Notification ID: {}", job.id, notification_id);
+                    }
+                    Err(e) => {
+                        eprintln!("[NotificationController::get_notification] Error enqueuing track notification for notification {}: {:?}", notification_id, e);
+                    }
+                }
+            });
+        }
+
         
         // Procesar resultado de usuario (opcional, continuamos aunque falle)
         let user = match user_result {

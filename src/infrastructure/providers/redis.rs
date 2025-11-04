@@ -4,6 +4,7 @@ use crate::infrastructure::redis::RedisClient;
 #[derive(Clone)]
 pub struct RedisServiceProvider {
     pub connect_redis: ConnectRedisUseCase,
+    pub redis_client: RedisClient,
 }
 
 impl RedisServiceProvider {
@@ -15,7 +16,7 @@ impl RedisServiceProvider {
         let redis_client = RedisClient::new(&url)
             .map_err(|e| format!("Failed to create Redis client: {}", e))?;
 
-        let connect_redis = ConnectRedisUseCase::new(redis_client);
+        let connect_redis = ConnectRedisUseCase::new(redis_client.clone());
         
         // Verificar la conexión al inicializar
         connect_redis.execute().await
@@ -23,6 +24,7 @@ impl RedisServiceProvider {
 
         Ok(Self {
             connect_redis,
+            redis_client,
         })
     }
 }

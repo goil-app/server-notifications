@@ -15,4 +15,7 @@ pub use analytics::{NotificationReadRepository, NotificationReadRepoError};
 pub mod business;
 pub use business::{Business, BusinessRepository, BusinessRepoError};
 
+pub mod queue;
+pub use queue::{Queue, QueueError, Job, JobOptions};
+
 pub mod getstream;

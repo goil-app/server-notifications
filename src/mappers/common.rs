@@ -15,3 +15,8 @@ pub fn sha512_hash(input: &str) -> String {
     let result = hasher.finalize();
     hex::encode(result)
 }
+
+/// Verifica si un string es un ObjectId válido de MongoDB
+pub fn is_object_id_or_hex_string(id: &str) -> bool {
+    ObjectId::parse_str(id).is_ok()
+}
