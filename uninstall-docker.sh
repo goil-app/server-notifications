@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script de desinstalación de Docker y Docker Compose en Debian
+# Script de desinstalación de Docker y Docker Compose en Ubuntu
 # Ejecutar con: bash uninstall-docker.sh
 
 set -e

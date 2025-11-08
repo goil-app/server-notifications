@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Script de instalación de Docker y Docker Compose en Debian
+# Script de instalación de Docker y Docker Compose en Ubuntu
 # Ejecutar con: bash install-docker.sh
 
 set -e
 
-echo "🚀 Instalando Docker y Docker Compose en Debian..."
+echo "🚀 Instalando Docker y Docker Compose en Ubuntu..."
 
 # 1. Actualizar el sistema
 echo "📦 Actualizando sistema..."
@@ -23,13 +23,13 @@ sudo apt-get install -y \
 # 3. Añadir la clave GPG oficial de Docker
 echo "🔑 Añadiendo clave GPG de Docker..."
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
 # 4. Configurar el repositorio de Docker
 echo "📝 Configurando repositorio de Docker..."
 echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # 5. Instalar Docker Engine

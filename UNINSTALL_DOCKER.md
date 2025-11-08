@@ -1,4 +1,4 @@
-# Desinstalación de Docker y Docker Compose en Debian
+# Desinstalación de Docker y Docker Compose en Ubuntu
 
 ## Desinstalación Completa
 
