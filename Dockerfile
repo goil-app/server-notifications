@@ -1,5 +1,6 @@
 # ===== Builder =====
-FROM rust:1.91 as builder
+# Usar Debian Bookworm para compilar y asegurar compatibilidad con el runtime
+FROM rust:1.91-bookworm as builder
 WORKDIR /app
 
 # Cache deps
@@ -12,8 +13,11 @@ COPY . .
 RUN cargo build --release
 
 # ===== Runtime =====
+# Usar Debian Bookworm (estable) para compatibilidad con servidores Debian
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y ca-certificates libc6 && \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/server-notifications /usr/local/bin/server
 ENV RUST_LOG=info

@@ -222,7 +222,24 @@ where
                 "v": 0
             });
 
-            println!("{}", serde_json::to_string(&log_entry).unwrap_or_default());
+            let log_json = serde_json::to_string(&log_entry).unwrap_or_default();
+            
+            // Escribir a stdout (para Docker logs)
+            println!("{}", log_json);
+            
+            // También escribir a archivo para Promtail (si está configurado)
+            if let Ok(log_dir) = std::env::var("LOG_DIR") {
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                let log_file = format!("{}/server-notifications.log", log_dir);
+                if let Ok(mut file) = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_file)
+                {
+                    let _ = writeln!(file, "{}", log_json);
+                }
+            }
 
             Ok(res)
         })
