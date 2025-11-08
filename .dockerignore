@@ -1,7 +1,6 @@
 target/
 .git/
 .gitignore
-*.md
 .env
 *.log
 logs/
@@ -11,4 +10,3 @@ grafana-dashboards/
 !prometheus.yml
 !loki-config.yml
 !promtail-config.yml
-!grafana-datasources.yml
