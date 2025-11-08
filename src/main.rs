@@ -19,6 +19,13 @@ async fn main() -> std::io::Result<()> {
         eprintln!("[main] Warning: Could not load .env file: {}. Using system environment variables.", e);
     }
 
+    // Inicializar tracing con formato JSON (similar a Bunyan)
+    // RUST_LOG puede usarse para controlar el nivel de log (ej: RUST_LOG=info)
+    tracing_subscriber::fmt()
+        .json() // Formato JSON estructurado
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     // Configurar workers dinámicamente basado en los CPUs disponibles
     // Cada worker tiene su propio pool de MongoDB, así que el pool total = workers × max_pool_size
     let num_workers = std::env::var("ACTIX_WORKERS")
@@ -71,6 +78,7 @@ async fn main() -> std::io::Result<()> {
     
     let port =  std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap_or(8080);
     HttpServer::new(move || App::new()
+        .wrap(middleware::logging::StructuredLogging)
         .wrap(NormalizePath::new(TrailingSlash::Trim))
         .app_data(actix_web::web::Data::new(services.clone()))
         .service(routes::health::router())
