@@ -3,8 +3,7 @@ use actix_web::HttpMessage;
 use crate::infrastructure::services::AppServices;
 use crate::response::ApiResponse;
 use crate::types::AuthContext;
-use crate::mappers::{notification::domain_to_response, common::sha512_hash, request_headers::RequestHeaders};
-use crate::application::notification::TrackNotificationParams;
+use crate::mappers::{notification::domain_to_response, common::sha512_hash};
 
 /// Controlador para endpoints de notificaciones
 pub struct NotificationController;
@@ -48,11 +47,6 @@ impl NotificationController {
                     .json(ApiResponse::<()>::error("Notification not found"));
             }
         };
-
-        // Encolar tracking si es necesario
-        if !is_uuid && crate::mappers::common::is_object_id_or_hex_string(&id) {
-            Self::enqueue_tracking(&services, &req, &id, &business_id, &auth_ctx);
-        }
 
         // Procesar resultados opcionales
         let user = user_result.ok();
@@ -138,28 +132,6 @@ impl NotificationController {
         } else {
             services.notification.get_notification.execute(id, language, business_id).await
         }
-    }
-
-    fn enqueue_tracking(
-        services: &AppServices,
-        req: &HttpRequest,
-        notification_id: &str,
-        business_id: &str,
-        auth_ctx: &AuthContext,
-    ) {
-        let headers = RequestHeaders::from_request(req);
-        
-        let params = TrackNotificationParams {
-            id: notification_id.to_string(),
-            business_id: business_id.to_string(),
-            account_id: auth_ctx.user_id.clone(), // Usar user_id del token, no del header
-            device_client_type: headers.device_client_type,
-            device_client_model: headers.device_client_model,
-            device_client_os: headers.device_client_os,
-            session_id: auth_ctx.session_id.clone().unwrap_or_default(),
-        };
-
-        services.notification.enqueue_track_notification.execute_async(params, headers.authorization);
     }
 
     async fn fetch_additional_data(
