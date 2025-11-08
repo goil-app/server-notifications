@@ -9,14 +9,34 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  # Scrape logs de archivos de la aplicación
+  # Scrape logs del servidor Rust (corriendo fuera de Docker)
   - job_name: server-notifications
     static_configs:
       - targets:
           - localhost
         labels:
           job: server-notifications
+          service: server-notifications
           __path__: /var/log/app/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            name: name
+            hostname: hostname
+            pid: pid
+            level: level
+            http: http
+            msg: msg
+            time: time
+            v: v
+      - labels:
+          name:
+          hostname:
+          level:
+          service:
+      - timestamp:
+          source: time
+          format: RFC3339
 
   # Scrape logs de Docker containers
   - job_name: docker-containers

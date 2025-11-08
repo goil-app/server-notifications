@@ -22,9 +22,10 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   # Métricas del servicio Rust (si implementas endpoint de métricas)
+  # Nota: El servidor Rust corre fuera de Docker, ajusta la IP/hostname según tu configuración
   - job_name: 'server-notifications'
     static_configs:
-      - targets: ['server-notifications:8080']
+      - targets: ['host.docker.internal:8080']  # Para acceder al host desde Docker
     metrics_path: '/metrics'
     scrape_interval: 10s
 

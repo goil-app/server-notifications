@@ -1,38 +1,5 @@
 
 services:
-  # Servicio Rust de notificaciones
-  server-notifications:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: server-notifications
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    environment:
-      - API_PORT=${API_PORT}
-      - LOG_DIR=/app/logs
-      - MONGODB_URI=${MONGODB_URI}
-      - JWT_MOBILE_PLATFORM=${JWT_MOBILE_PLATFORM}
-      - GETSTREAM_API_KEY=${GETSTREAM_API_KEY}
-      - GETSTREAM_SECRET=${GETSTREAM_SECRET}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-      - PUBLIC_BUCKET=${PUBLIC_BUCKET}
-      - S3_URL_EXPIRES_IN=${S3_URL_EXPIRES_IN}
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - monitoring
-    restart: "no"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # Loki - Agregador de logs
   loki:
     image: grafana/loki:2.9.0
