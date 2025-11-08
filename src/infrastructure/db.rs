@@ -60,6 +60,7 @@ impl Databases {
 
     /// Inicializa el cliente MongoDB con configuración por defecto
     /// Para configuración personalizada, usar `init_with_pool_config`
+    #[allow(dead_code)] // Mantenido para compatibilidad futura
     pub async fn init() -> mongodb::error::Result<Self> {
         Self::init_with_pool_config(None, None).await
     }
