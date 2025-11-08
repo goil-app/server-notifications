@@ -1,6 +1,8 @@
+# Docker Compose para desarrollo
+# Usa: docker compose -f docker-compose.dev.yml up
 
 services:
-  # Servicio Rust de notificaciones
+  # Servicio Rust de notificaciones (desarrollo)
   server-notifications:
     build:
       context: .
@@ -26,7 +28,7 @@ services:
       - ./logs:/app/logs
     networks:
       - monitoring
-    restart: "no"
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
