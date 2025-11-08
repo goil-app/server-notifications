@@ -7,6 +7,5 @@ logs/
 grafana-dashboards/
 *.yml
 !docker-compose.yml
-!prometheus.yml
 !loki-config.yml
 !promtail-config.yml
