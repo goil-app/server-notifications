@@ -112,6 +112,16 @@ where
         // Capturar información del request
         let method = req.method().to_string();
         let path = req.path();
+        
+        // Omitir logging para endpoints de health check
+        if path == "/health" || path.starts_with("/health/") {
+            // Para health checks, simplemente pasar la request sin logging
+            return Box::pin(async move {
+                let res = service.call(req).await?;
+                Ok(res.map_into_boxed_body())
+            });
+        }
+        
         let query_string = req.query_string();
         let full_path = if query_string.is_empty() {
             path.to_string()

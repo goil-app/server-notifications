@@ -4,6 +4,7 @@ use crate::infrastructure::services::AppServices;
 use crate::response::ApiResponse;
 use crate::types::AuthContext;
 use crate::mappers::{notification::domain_to_response, common::sha512_hash};
+use crate::infrastructure::external::queue::QueueRequestHeaders;
 
 /// Controlador para endpoints de notificaciones
 pub struct NotificationController;
@@ -69,6 +70,19 @@ impl NotificationController {
             &notification_reads,
             getstream_unread_count,
         );
+
+        // Encolar tracking solo si la notificación NO es UUID (es decir, es una notificación del servidor)
+        if !is_uuid {
+            let tracking_headers = Self::extract_tracking_headers(&req);
+            let _ = services.notification.enqueue_track_notification.execute(
+                &id,
+                &auth_ctx.user_id,
+                Some(business_id.clone()),
+                auth_ctx.session_id.clone(), // Extraer sessionId del token
+                tracking_headers,
+            ).await;
+            // Ignoramos errores de tracking para no afectar la respuesta principal
+        }
 
         // Construir respuesta
         let business_name = business.map(|b| b.name).unwrap_or_else(|| "Goil".to_string());
@@ -207,6 +221,42 @@ impl NotificationController {
             .count() as i32;
 
         server_unread_count + getstream_unread_count
+    }
+
+    fn extract_tracking_headers(req: &HttpRequest) -> QueueRequestHeaders {
+        let authorization = req.headers()
+            .get("authorization")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+        
+        let x_client_platform = req.headers()
+            .get("x-client-platform")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string())
+            .or_else(|| Some("mobile-platform".to_string())); // Default si no existe
+        
+        let x_client_os = req.headers()
+            .get("x-client-os")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+        
+        let x_client_device = req.headers()
+            .get("x-client-device")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+        
+        let x_client_id = req.headers()
+            .get("x-client-id")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
+        QueueRequestHeaders {
+            authorization,
+            x_client_platform,
+            x_client_os,
+            x_client_device,
+            x_client_id,
+        }
     }
 }
 
