@@ -31,10 +31,10 @@ impl NotificationController {
         };
 
         // Ejecutar queries en paralelo
-        let is_uuid = uuid::Uuid::parse_str(&id).is_ok();
+        let is_mongo_id = mongodb::bson::oid::ObjectId::parse_str(&id).is_ok();
         let (user_result, notification_result, business_result, getstream_unread_result) = tokio::join!(
             Self::fetch_user(&services, &auth_ctx.user_id, &business_id, &business_ids),
-            Self::fetch_notification(&services, &id, is_uuid, &auth_ctx.user_id, &language, &business_id),
+            Self::fetch_notification(&services, &id, is_mongo_id, &auth_ctx.user_id, &language, &business_id),
             services.business.get_business.execute(&business_id),
             services.notification.get_getstream_unread_count.execute(&auth_ctx.user_id),
         );
@@ -71,8 +71,8 @@ impl NotificationController {
             getstream_unread_count,
         );
 
-        // Encolar tracking solo si la notificación NO es UUID (es decir, es una notificación del servidor)
-        if !is_uuid {
+        // Encolar tracking solo si la notificación es de MongoDB (es decir, es una notificación del servidor)
+        if is_mongo_id {
             let tracking_headers = Self::extract_tracking_headers(&req);
             let _ = services.notification.enqueue_track_notification.execute(
                 &id,
@@ -135,16 +135,18 @@ impl NotificationController {
     async fn fetch_notification(
         services: &AppServices,
         id: &str,
-        is_uuid: bool,
+        is_mongo_id: bool,
         user_id: &str,
         language: &str,
         business_id: &str,
     ) -> Result<crate::domain::Notification, crate::domain::NotificationRepoError> {
-        if is_uuid {
+        if is_mongo_id {
+            // Si es ID de MongoDB, ejecutar consulta a MongoDB
+            services.notification.get_notification.execute(id, language, business_id).await
+        } else {
+            // Si no es ID de MongoDB, ejecutar consulta a GetStream (UUID)
             services.notification.get_getstream_message.execute(id, user_id, language, business_id).await
                 .map_err(|e| crate::domain::NotificationRepoError::Unexpected(format!("getstream: {}", e)))
-        } else {
-            services.notification.get_notification.execute(id, language, business_id).await
         }
     }
 
