@@ -62,6 +62,11 @@ impl UserRepository for MongoUserRepository {
     }
 
     async fn find_by_phone_and_business_ids(&self, phone: &str, business_ids: &[String]) -> Result<Vec<SimplifiedUser>, UserRepoError> {
+        // Si no hay business_ids, retornar vacío (evitar query innecesaria)
+        if business_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        
         // Convertir businessIds de String a ObjectId
         let business_oids: Result<Vec<ObjectId>, _> = business_ids
             .iter()
@@ -76,11 +81,17 @@ impl UserRepository for MongoUserRepository {
         };
 
         // IMPORTANTE: Para máximo rendimiento, crear índice en MongoDB:
-        // db.Account.createIndex({ "phone": 1, "businessId": 1 })
+        // db.Account.createIndex({ "phone": 1, "businessId": 1 }, { name: "phone_businessId_idx" })
+        // 
+        // Optimizaciones aplicadas:
+        // - batch_size mayor que limit para evitar round-trips extra
+        // - limit razonable para evitar cargar demasiados documentos
+        // - pre-allocación de capacidad del vector
         let options = FindOptions::builder()
             .projection(doc! { "_id": 1, "phone": 1, "creationDate": 1, "accountType": 1 })
             .limit(20) // Límite razonable (normalmente hay pocos usuarios con el mismo teléfono)
-            .batch_size(20)
+            .batch_size(50) // Mayor que limit para evitar round-trips adicionales
+            .hint(mongodb::options::Hint::Keys(doc! { "phone": 1, "businessId": 1 })) // Forzar uso del índice compuesto
             .build();
 
         let coll = self.db.collection::<Document>("Account");
@@ -97,7 +108,7 @@ impl UserRepository for MongoUserRepository {
             .await
             .map_err(|e| UserRepoError::Unexpected(e.to_string()))?;
         
-        let mut users = Vec::new();
+        let mut users = Vec::with_capacity(docs.len()); // Pre-allocar capacidad
         for result in docs {
             match doc_to_simplified(result) {
                 Ok(user) => users.push(user),
