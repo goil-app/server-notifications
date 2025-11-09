@@ -222,22 +222,41 @@ where
                 "v": 0
             });
 
+            // Usar tracing para enviar logs a Loki automáticamente
+            // El formato JSON estructurado se envía directamente a Loki
             let log_json = serde_json::to_string(&log_entry).unwrap_or_default();
             
-            // Escribir a stdout (para Docker logs)
+            // Print local para debugging (ver el JSON que se enviará a Loki)
             println!("{}", log_json);
             
-            // También escribir a archivo para Promtail (si está configurado)
-            if let Ok(log_dir) = std::env::var("LOG_DIR") {
-                use std::fs::OpenOptions;
-                use std::io::Write;
-                let log_file = format!("{}/server-notifications.log", log_dir);
-                if let Ok(mut file) = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&log_file)
-                {
-                    let _ = writeln!(file, "{}", log_json);
+            // Log usando tracing (se enviará automáticamente a Loki)
+            match status_code {
+                500..=599 => {
+                    tracing::error!(
+                        path = %full_path,
+                        method = %method,
+                        status_code = status_code,
+                        duration_ms = duration_ms,
+                        "{}", log_json
+                    );
+                }
+                400..=499 => {
+                    tracing::warn!(
+                        path = %full_path,
+                        method = %method,
+                        status_code = status_code,
+                        duration_ms = duration_ms,
+                        "{}", log_json
+                    );
+                }
+                _ => {
+                    tracing::info!(
+                        path = %full_path,
+                        method = %method,
+                        status_code = status_code,
+                        duration_ms = duration_ms,
+                        "{}", log_json
+                    );
                 }
             }
 

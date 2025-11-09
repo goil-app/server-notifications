@@ -6,7 +6,11 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  # URL de tu Loki remoto (ajusta según tu configuración)
+  # Reemplaza con la URL de tu servidor Grafana/Loki
+  # Ejemplo: http://192.168.1.100:3100/loki/api/v1/push
+  # Ejemplo: http://grafana.example.com:3100/loki/api/v1/push
+  - url: https://gobs.goil.app/loki/loki/api/v1/push
 
 scrape_configs:
   # Scrape logs del servidor Rust (corriendo fuera de Docker)

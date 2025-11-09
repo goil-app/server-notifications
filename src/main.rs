@@ -19,12 +19,53 @@ async fn main() -> std::io::Result<()> {
         eprintln!("[main] Warning: Could not load .env file: {}. Using system environment variables.", e);
     }
 
-    // Inicializar tracing con formato JSON (similar a Bunyan)
-    // RUST_LOG puede usarse para controlar el nivel de log (ej: RUST_LOG=info)
-    tracing_subscriber::fmt()
-        .json() // Formato JSON estructurado
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    // Configurar URL de Loki desde variable de entorno o usar default
+    let loki_url = std::env::var("LOKI_URL")
+        .unwrap_or_else(|_| "https://gobs.goil.app/loki/loki/api/v1/push".to_string());
+    
+    // Obtener hostname para labels
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+    
+    // Inicializar tracing con Loki
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use url::Url;
+    
+    let url = Url::parse(&loki_url)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid Loki URL: {}", e)))?;
+    
+    let (layer, task) = tracing_loki::builder()
+        .label("job", "server-notifications")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Loki label error: {}", e)))?
+        .label("service", "server-notifications")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Loki label error: {}", e)))?
+        .label("hostname", hostname.as_str())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Loki label error: {}", e)))?
+        .extra_field("pid", format!("{}", std::process::id()))
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Loki field error: {}", e)))?
+        .build_url(url)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Loki init error: {}", e)))?;
+    
+    // También mantener stdout para debugging local
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_writer(std::io::stdout);
+    
+    let filter = tracing_subscriber::EnvFilter::from_default_env();
+    
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(layer)
+        .with(stdout_layer)
         .init();
+    
+    // Spawn la tarea de Loki en background
+    tokio::spawn(task);
+    
+    eprintln!("[main] Logging inicializado: enviando logs a Loki en {}", loki_url);
 
     // Configurar workers dinámicamente basado en los CPUs disponibles
     // Cada worker tiene su propio pool de MongoDB, así que el pool total = workers × max_pool_size
