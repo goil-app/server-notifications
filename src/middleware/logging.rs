@@ -11,9 +11,51 @@ use std::{
     rc::Rc,
     time::SystemTime,
 };
+use std::sync::Arc;
+
+/// Configuración para el middleware de logging
+#[derive(Clone)]
+pub struct LoggingConfig {
+    pub hostname: String,
+    pub loki_url: String,
+    pub service_name: String,
+}
+
+impl LoggingConfig {
+    /// Crea una nueva configuración desde variables de entorno o valores por defecto
+    pub fn from_env() -> Self {
+        let hostname = std::env::var("HOSTNAME")
+            .or_else(|_| hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+                .ok_or(()))
+            .unwrap_or_else(|_| "unknown".to_string());
+        
+        let loki_url = std::env::var("LOKI_URL")
+            .unwrap_or_else(|_| "https://gobs.goil.app/loki/loki".to_string());
+        
+        let service_name = std::env::var("SERVICE_NAME")
+            .unwrap_or_else(|_| "server-notifications".to_string());
+        
+        Self {
+            hostname,
+            loki_url,
+            service_name,
+        }
+    }
+}
 
 /// Middleware de logging estructurado en formato JSON compatible con Grafana
-pub struct StructuredLogging;
+pub struct StructuredLogging {
+    config: LoggingConfig,
+}
+
+impl StructuredLogging {
+    /// Crea un nuevo middleware con la configuración proporcionada
+    pub fn new(config: LoggingConfig) -> Self {
+        Self { config }
+    }
+}
 
 impl<S, B> Transform<S, ServiceRequest> for StructuredLogging
 where
@@ -29,14 +71,22 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
+        // Crear cliente HTTP reutilizable para enviar logs a Loki
+        let client = Arc::new(reqwest::Client::new());
+        let config = self.config.clone();
+        
         ready(Ok(StructuredLoggingMiddleware {
             service: Rc::new(service),
+            config,
+            client,
         }))
     }
 }
 
 pub struct StructuredLoggingMiddleware<S> {
     service: Rc<S>,
+    config: LoggingConfig,
+    client: Arc<reqwest::Client>,
 }
 
 impl<S, B> Service<ServiceRequest> for StructuredLoggingMiddleware<S>
@@ -54,6 +104,9 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
+        // Clonar client y config antes del async move para evitar problemas de lifetime
+        let client = self.client.clone();
+        let config = self.config.clone();
         let start_time = SystemTime::now();
 
         // Capturar información del request
@@ -75,15 +128,9 @@ where
             }
         }
 
-        // Obtener hostname del sistema
-        let hostname = hostname::get()
-            .ok()
-            .and_then(|h| h.into_string().ok())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        // Obtener nombre del servicio desde env o usar default
-        let service_name = std::env::var("SERVICE_NAME")
-            .unwrap_or_else(|_| "server-notifications".to_string());
+        // Usar la configuración pasada al middleware (no leer de env cada vez)
+        let hostname = config.hostname.clone();
+        let service_name = config.service_name.clone();
 
         // Obtener PID
         let pid = std::process::id();
@@ -222,43 +269,64 @@ where
                 "v": 0
             });
 
-            // Usar tracing para enviar logs a Loki automáticamente
-            // El formato JSON estructurado se envía directamente a Loki
+            // Enviar directamente a Loki usando reqwest para controlar el formato exacto
             let log_json = serde_json::to_string(&log_entry).unwrap_or_default();
             
-            // Print local para debugging (ver el JSON que se enviará a Loki)
-            println!("{}", log_json);
+            // Print local para debugging
+            eprintln!("[logging] Sending log to Loki: {}", log_json);
             
-            // Log usando tracing (se enviará automáticamente a Loki)
-            match status_code {
-                500..=599 => {
-                    tracing::error!(
-                        path = %full_path,
-                        method = %method,
-                        status_code = status_code,
-                        duration_ms = duration_ms,
-                        "{}", log_json
-                    );
+            // Construir payload para Loki
+            // Usar el hostname que ya capturamos al inicio (consistente con el JSON del log)
+            // No obtenerlo de nuevo aquí para evitar inconsistencias
+            
+            let timestamp_ns = chrono::Utc::now().timestamp_nanos_opt()
+                .unwrap_or_else(|| chrono::Utc::now().timestamp() * 1_000_000_000);
+            
+            let loki_payload = json!({
+                "streams": [{
+                    "stream": {
+                        "job": "server-notifications",
+                        "service": "server-notifications",
+                        "host": hostname
+                    },
+                    "values": [[
+                        timestamp_ns.to_string(),
+                        log_json
+                    ]]
+                }]
+            });
+            
+            // Enviar a Loki en background (no bloquear la respuesta)
+            // Asegurar que la URL tenga /api/v1/push
+            let loki_url_final = if config.loki_url.ends_with("/api/v1/push") {
+                config.loki_url.clone()
+            } else if config.loki_url.ends_with("/loki") {
+                format!("{}/api/v1/push", config.loki_url)
+            } else {
+                format!("{}/loki/api/v1/push", config.loki_url)
+            };
+            
+            // Serializar el payload antes del spawn para evitar problemas de lifetime
+            let payload_json = serde_json::to_string(&loki_payload).unwrap_or_default();
+            
+            tokio::spawn(async move {
+                match client
+                    .post(&loki_url_final)
+                    .header("Content-Type", "application/json")
+                    .body(payload_json)
+                    .send()
+                    .await
+                {
+                    Ok(resp) => {
+                        if !resp.status().is_success() {
+                            eprintln!("[logging] Loki respondió con error: {} - {:?}", resp.status(), resp.text().await.ok());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[logging] Error enviando log a Loki: {}", e);
+                    }
                 }
-                400..=499 => {
-                    tracing::warn!(
-                        path = %full_path,
-                        method = %method,
-                        status_code = status_code,
-                        duration_ms = duration_ms,
-                        "{}", log_json
-                    );
-                }
-                _ => {
-                    tracing::info!(
-                        path = %full_path,
-                        method = %method,
-                        status_code = status_code,
-                        duration_ms = duration_ms,
-                        "{}", log_json
-                    );
-                }
-            }
+            });
 
             Ok(res)
         })
