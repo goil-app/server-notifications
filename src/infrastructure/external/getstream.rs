@@ -12,9 +12,9 @@ pub struct HttpGetStreamRepository;
 
 #[async_trait]
 impl GetStreamRepository for HttpGetStreamRepository {
-    async fn find_message_by_uuid(&self, id: &str, user_id: &str, _language: &str, _business_id: &str) -> Result<Notification, GetStreamRepoError> {
+    async fn find_message_by_uuid(&self, id: &str, _user_id: &str, _language: &str, _business_id: &str) -> Result<Notification, GetStreamRepoError> {
         // 1) Generar JWT
-        let token = generate_getstream_jwt(user_id, 60)?;
+        let token = generate_getstream_jwt(None, 60)?;
 
         // 3) Preparar request HTTP
         let api_key = std::env::var("GETSTREAM_API_KEY").map_err(|e| GetStreamRepoError::Unexpected(e.to_string()))?;
@@ -83,7 +83,7 @@ impl GetStreamRepository for HttpGetStreamRepository {
     }
 
     async fn get_unread_count(&self, user_id: &str) -> Result<i32, GetStreamRepoError> {
-        let token = generate_getstream_jwt(user_id, 60)?;
+        let token = generate_getstream_jwt(Some(user_id), 60)?;
 
         let api_key = std::env::var("GETSTREAM_API_KEY").map_err(|e| GetStreamRepoError::Unexpected(e.to_string()))?;
         let url = "https://chat.stream-io-api.com/unread";
