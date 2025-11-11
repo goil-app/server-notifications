@@ -44,21 +44,42 @@ pub async fn auth_guard( // middleware: valida y decodifica JWT HS256 y añade A
         }
     };
 
-    // Decodificar y validar firma/exp con HS256
+    // Decodificar y validar firma con HS256
+    // Si el token está expirado pero la firma es válida, extraemos los claims igualmente
     let claims = match decode::<JwtClaims>(
         token_str,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::new(Algorithm::HS256),
     ) {
-        Ok(token) => token.claims, // éxito: obtenemos los claims
+        Ok(token) => token.claims, // éxito: token válido y no expirado
         Err(err) => {
             use jsonwebtoken::errors::ErrorKind;
-            let resp = match err.kind() { // mapear a 401 con mensaje
-                ErrorKind::ExpiredSignature => unauthorized("Token expired"),
-                ErrorKind::InvalidSignature => unauthorized("Token has invalid signature"),
-                _ => unauthorized("Not Authorized"),
-            };
-            return Ok(req.into_response(resp.map_into_boxed_body()));
+            // Si el token está expirado pero la firma es válida, intentamos decodificarlo sin validar expiración
+            if err.kind() == &ErrorKind::ExpiredSignature {
+                // Crear validación sin verificar expiración para extraer los campos
+                let mut validation = Validation::new(Algorithm::HS256);
+                validation.validate_exp = false;
+                
+                match decode::<JwtClaims>(
+                    token_str,
+                    &DecodingKey::from_secret(secret.as_bytes()),
+                    &validation,
+                ) {
+                    Ok(token) => token.claims, // Token expirado pero firma válida, extraemos los campos
+                    Err(_) => {
+                        // Si aún falla, la firma es inválida
+                        let resp = unauthorized("Token has invalid signature");
+                        return Ok(req.into_response(resp.map_into_boxed_body()));
+                    }
+                }
+            } else {
+                // Otros errores (firma inválida, formato incorrecto, etc.)
+                let resp = match err.kind() {
+                    ErrorKind::InvalidSignature => unauthorized("Token has invalid signature"),
+                    _ => unauthorized("Not Authorized"),
+                };
+                return Ok(req.into_response(resp.map_into_boxed_body()));
+            }
         }
     };
 
