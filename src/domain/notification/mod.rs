@@ -7,6 +7,10 @@ pub struct Notification {
     pub title: String,
     pub body: String,
     pub image_paths: Vec<String>,
+    pub url: String,
+    pub r#type: i32, // r#type porque "type" es una palabra reservada en Rust
+    pub payload_type: i32,
+    pub is_read: bool,
 }
 
 #[derive(thiserror::Error, Debug)]

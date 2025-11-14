@@ -47,6 +47,10 @@ impl GetStreamRepository for HttpGetStreamRepository {
                 title: "".to_string(),
                 body: "".to_string(),
                 image_paths: vec![],
+                url: "".to_string(), // Dummy
+                r#type: 0, // Dummy
+                payload_type: 0, // Dummy
+                is_read: false, // Dummy
             });
         }
 
@@ -79,6 +83,10 @@ impl GetStreamRepository for HttpGetStreamRepository {
             title,
             body: body_text,
             image_paths: vec![],
+            url: "".to_string(), // Dummy
+            r#type: 0, // Dummy
+            payload_type: 0, // Dummy
+            is_read: false, // Dummy
         })
     }
 

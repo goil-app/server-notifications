@@ -40,11 +40,29 @@ pub fn doc_to_domain(doc: Document, language: &str) -> Result<Notification, Noti
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
+    // Extraer campos adicionales o usar valores dummy
+    let url = doc.get_str("url")
+        .map(String::from)
+        .unwrap_or_else(|_| "".to_string()); // Dummy: string vacío
+    
+    let notification_type = doc.get_i32("type")
+        .unwrap_or(0); // Dummy: 0
+    
+    let payload_type = doc.get_i32("payloadType")
+        .unwrap_or(0); // Dummy: 0
+    
+    let is_read = doc.get_bool("isRead")
+        .unwrap_or(false); // Dummy: false
+
     Ok(Notification {
         id,
         title,
         body,
         image_paths,
+        url,
+        r#type: notification_type,
+        payload_type,
+        is_read,
     })
 }
 
@@ -69,6 +87,10 @@ pub struct NotificationDto {
     pub body: String,
     pub imageUrls: Vec<String>,
     pub imagePath: Vec<String>,
+    pub url: String,
+    pub r#type: i32, // r#type porque "type" es una palabra reservada en Rust
+    pub payloadType: i32,
+    pub isRead: bool,
 }
 
 pub async fn domain_to_response(
@@ -102,6 +124,10 @@ pub async fn domain_to_response(
         body: n.body,
         imageUrls: image_urls,
         imagePath: n.image_paths,
+        url: n.url,
+        r#type: n.r#type,
+        payloadType: n.payload_type,
+        isRead: n.is_read,
     };
     
     NotificationResponse { 
